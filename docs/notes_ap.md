@@ -33,4 +33,4 @@ Create vnc server on dunree:
 - on dunree: `vncserver :2 -localhost -geometry 1400x1000`
 - to kill server: `vncserver -kill :2`
 - on baliste: `ssh -L 1234:localhost:5902 -C -N -l aponte dunree`
-- on baliste: ``
+- on baliste: launch tigervnc with the address `localhost:1234` and appropriate password
