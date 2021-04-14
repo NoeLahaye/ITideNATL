@@ -75,3 +75,22 @@ Create vnc server on dunree:
 - to kill server: `vncserver -kill :2`
 - on baliste: `ssh -L 1234:localhost:5902 -C -N -l aponte dunree`
 - on baliste: launch tigervnc with the address `localhost:1234` and appropriate password
+
+Submit/Kill job:
+```
+sbatch job.sh
+scancel <jobid>
+```
+
+
+Create dask config files and increase timeouts:
+```
+git clone https://github.com/dask/distributed.git
+mkdir .config
+mkdir .config/dask
+cp distributed/distributed/distributed.yaml .config/dask/
+# change timeout in distributed.yaml file:
+timeouts:
+	connect: 600s          # time before connecting fails
+	tcp: 600s              # time before calling an unresponsive connection dead
+```
