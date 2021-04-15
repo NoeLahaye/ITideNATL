@@ -44,7 +44,8 @@ if __name__ == '__main__':
 
     # select run
     run='eNATL60-BLB002-S' # what is `eNATL60-BLB002X-S` `eNATL60-BLB002X-R`?
-    files = get_files("raw", run=run, file_type="gridT")
+    file_type="gridT"
+    files = get_files("raw", run=run, file_type=file_type)
 
     # output directory
     path_out='/scratch/cnt0024/ige2071/aponte/tmean/'
@@ -61,7 +62,7 @@ if __name__ == '__main__':
 
     task_file = open("task.conf", "w")
     for i, f in enumerate(files):
-        task = "{}-{} python {} {} {} ".format(i, i, pyscript, f, path_out)
+        task = "{}-{} python {} {} {} {} ".format(i, i, pyscript, f, file_type, path_out)
         if extra_args:
             task = task + " ".join(extra_args)
         # could test if diagnostic has been done here, done in actual job for now

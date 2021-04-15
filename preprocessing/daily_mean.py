@@ -26,7 +26,8 @@ if __name__ == '__main__':
 
     # collect arguments
     file_in = sys.argv[1]
-    path_out = sys.argv[2]
+    file_type = sys.argv[2]
+    path_out = sys.argv[3]
 
     # flag for graph outputs
     graph=False
@@ -47,7 +48,7 @@ if __name__ == '__main__':
     # check log file existence and exit if True
     date = str(ds["time_counter"].dt.strftime("%Y%m%d")[0].values)
     log_path = os.path.join(path_out, "logs")
-    log_file = os.path.join(log_path, date)
+    log_file = os.path.join(log_path, "daily_mean_"+file_type+"_"+date)
     if os.path.isfile(log_file):
         print(" File {} exists, skiping".format(log_file))
         sys.exit()
@@ -55,8 +56,8 @@ if __name__ == '__main__':
     print_graph(ds["votemper"], "open", date, graph)
     
     # debug
-    #ds = ds.isel(deptht=slice(0,5))
-    #print_graph(ds["votemper"], "isel", date, graph)
+    ds = ds.isel(deptht=slice(0,5))
+    print_graph(ds["votemper"], "isel", date, graph)
 
     # temporal average
     ds_processed = ds.mean("time_counter")
@@ -66,7 +67,8 @@ if __name__ == '__main__':
     print_graph(ds_processed["votemper"], "processed", date, graph)
 
     with performance_report(filename="dask-report.html"):
-        ds_processed.to_zarr(os.path.join(path_out, "mean_"+date+".zarr"), mode="w")
+        zarr_archive = "daily_mean_"+file_type+"_"+date+".zarr"
+        ds_processed.to_zarr(os.path.join(path_out, zarr_archive), mode="w")
 
     # create empty file to indicate processing was completed
     log_path = os.path.join(path_out, "logs")
