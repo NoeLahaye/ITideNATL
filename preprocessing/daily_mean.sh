@@ -34,7 +34,7 @@ start_time="$(date -u +%s)"
 # generate task.conf
 which python
 echo $ntasks
-python generate_tasks.py $root_data_dir$run $out_dir temporal_mean.py gridT
+python generate_tasks.py $root_data_dir$run $out_dir daily_mean.py gridT
 
 # run processing
 tasks=$( cat task.conf | wc -l )

@@ -4,6 +4,8 @@
 
 tmp/
 
+task.conf
+
 dask-worker-space
 dask-report.html
 
