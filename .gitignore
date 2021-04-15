@@ -2,4 +2,15 @@
 
 tmp/
 
+dask-worker-space
 dask-report.html
+
+*.tar
+*.png
+
+*.err
+*.out
+
+tave.o*
+tave.e*
+

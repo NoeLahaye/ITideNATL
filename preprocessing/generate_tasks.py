@@ -3,6 +3,9 @@
 
 # python generate_tasks.py $NATL/eNATL60-BLB002-S $SCRATCH pyscript file_in
 
+# degug
+#python generate_tasks.py $NATL/eNATL60-BLB002-S $SCRATCH temporal_mean.py gridT
+
 import os, sys
 from glob import glob
 
@@ -21,15 +24,17 @@ run_dirs = [r for r in sorted(glob(os.path.join(path_in,"00*")))
 
 files = []
 for r in run_dirs:
-    files = files + sorted(glob(os.path.join(r,"*"+file_in+"*.nc")))
+    files = files + sorted(glob(os.path.join(r,"*_"+file_in+"_*.nc")))
 
 print("{} files to process".format(len(files)))
 
-print(files[0])
-
+task_file = open("task.conf", "w")
 for i, f in enumerate(files):
-    task = "{}-{} python {} {} ".format(i, i, pyscript, f)
+    task = "{}-{} python {} {} {} ".format(i, i, pyscript, f, path_out)
     if extra_args:
         task = task + " ".join(extra_args)
     # add test if diagnostic done?
-    print(task)
+    #print(task)
+    if i<2:
+        task_file.write(task+"\n")
+
