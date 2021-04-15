@@ -1,5 +1,7 @@
 *~
 
+.DS_Store
+
 tmp/
 
 dask-worker-space
@@ -7,6 +9,7 @@ dask-report.html
 
 *.tar
 *.png
+*.svg
 
 *.err
 *.out
