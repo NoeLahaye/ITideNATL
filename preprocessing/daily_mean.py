@@ -7,6 +7,9 @@ from dask.distributed import Client, LocalCluster
 from dask.distributed import performance_report
 
 def print_graph(da, name, index, flag):
+    """ store dask graph as png
+    see: https://docs.dask.org/en/latest/diagnostics-distributed.html
+    """
     if not flag:
         return
     da.data.visualize(filename='graph_{}_{}.png'.format(name, index), 
@@ -31,10 +34,14 @@ if __name__ == '__main__':
     print("File being processed: "+file_in)
 
     #ds = xr.open_dataset(file_in)
-    #ds = xr.open_dataset(file_in, chunks={"time_counter": 1, "deptht": 1, "y": -1,"x": -1})
     ds = xr.open_dataset(file_in, chunks={"time_counter": -1, "deptht": 1, "y": 400,"x": -1})
-    #ds = xr.open_dataset(file_in, chunks={"time_counter": -1, "deptht": 100, "y": 2000,"x": -1})
     #ds = xr.open_dataset(file_in, chunks={"time_counter": -1, "deptht": 1, "y": -1,"x": -1})
+
+    # auto chunks leads to chunks that are 24, 1182, 1182, i.e. 33530976 points
+    # 33530976/8354 = 4013
+    # data variables are 24 x 300 x 4729 x 8354
+
+    # drop redundant variables
     ds = ds.drop_vars(["nav_lon", "nav_lat"])
 
     # check log file existence and exit if True
@@ -48,21 +55,13 @@ if __name__ == '__main__':
     print_graph(ds["votemper"], "open", date, graph)
     
     # debug
-    #ds = ds.isel(y=slice(0,400))
     #ds = ds.isel(deptht=slice(0,5))
-    # auto chunks leads to chunks that are 24, 1182, 1182, i.e. 33530976 points
-    # 33530976/8354 = 4013 
-    # data variables are 24 x 300 x 4729 x 8354
-    #print(ds, flush=True)
-    #print_graph(ds["votemper"], "isel", date)
+    #print_graph(ds["votemper"], "isel", date, graph)
 
     # temporal average
     ds_processed = ds.mean("time_counter")
     ds_processed = ds_processed.chunk({"y":-1})
-    # now just select one slice
-    #ds_processed = ds.isel(time_counter=0, deptht=0)
-    #print(ds_processed.time)
-    # https://docs.dask.org/en/latest/diagnostics-distributed.html
+    #
     print(ds_processed)
     print_graph(ds_processed["votemper"], "processed", date, graph)
 

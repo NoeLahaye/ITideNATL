@@ -1,5 +1,6 @@
 #!/bin/bash
 
+rm task.conf
 rm tave.e*
 rm tave.o*
 rm log_*.out
