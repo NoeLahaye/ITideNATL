@@ -73,7 +73,7 @@ def _get_raw_files(run, variable):
 def get_raw_files_with_timeline(run):
     """ Build a pandas series with filenames indexed by date
     """
-    files = _get_raw_files(run, "gridS")
+    files = _get_raw_files(run, variable)
 
     time = [f.split("/")[-1].split("-")[-1].replace(".nc","")
             for f in files]
