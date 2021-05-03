@@ -1,0 +1,10 @@
+{
+    "corr_N": true,
+    "eig_sigma": 0.1,
+    "free_surf": false,
+    "g": 9.81,
+    "nmodes": 10,
+    "siz_sparse": 30,
+    "zc_name": "z_c",
+    "zl_name": "z_l"
+}

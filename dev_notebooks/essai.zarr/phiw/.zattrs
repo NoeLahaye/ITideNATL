@@ -1,0 +1,9 @@
+{
+    "_ARRAY_DIMENSIONS": [
+        "y_c",
+        "x_c",
+        "z_l",
+        "mode"
+    ],
+    "coordinates": "llon_cc llat_cc e2t depth_l e3w e1t"
+}
