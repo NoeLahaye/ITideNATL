@@ -23,7 +23,9 @@ output_dir="/work/CT1/ige2071/SHARED/mean/"
 variable="gridT"
 
 # best if batch_size matches task number in daily_mean.sh (ntasks parameter)
-#batch_size = 30
+batch_size = 30 # days
+n_batch = 0
+suffix = str(batch)+"d_average"
 
 # which batch we consider
 #n_batch = 0
@@ -39,48 +41,23 @@ variable="gridT"
 #   eNATL60-BLB002 experiment (WITHOUT explicit tidal motion)
 #   eNATL60-BLBT02 experiment (WITH explicit tidal motion)
 
-def _get_raw_files(run, variable):
-    """ Return raw netcdf files
-
-    Parameters
-    ----------
-    run: str, list
-        string corresponding to the run or list of strings
-    variable:
-        variable to consider, e.g. ("gridT", "gridS", etc)
-    """
-
-    # multiple runs may be passed at once
-    if isinstance(run, list):
-        files = []
-        for r in run:
-            files = files + _get_raw_files(r, variable)
-        return files
-
-    # single run
-    path_in = os.path.join(root_data_dir, run)
-    run_dirs = [r for r in sorted(glob(os.path.join(path_in,"0*")))
-            if os.path.isdir(r)
-            ]
-    files = []
-    for r in run_dirs:
-        files = files + sorted(glob(os.path.join(r,"*_"+variable+"_*.nc")))
-
-    return files
-
-def get_raw_files_with_timeline(run):
+def get_zarr_with_timeline(run):
     """ Build a pandas series with filenames indexed by date
     """
-    files = _get_raw_files(run, variable)
+    files = sorted(glob(os.path.join(output_dir,
+                                     "daily_mean_{}_*.zarr".format(variable)
+                                     )
+                        )
+                   )
 
-    time = [f.split("/")[-1].split("-")[-1].replace(".nc","")
+    time = [f.split("/")[-1].split("_")[-1].replace(".zarr","")
             for f in files]
     timeline = pd.to_datetime(time)
     files = pd.Series(files, index=timeline, name="files").sort_index()
 
     return files
 
-def get_file_processed(files):
+def get_zarr_processed(files):
     """ Add boolean flag is file has already been processed
 
     debug: touch /work/CT1/ige2071/SHARED/mean/logs/daily_mean_gridT_20090630
@@ -106,28 +83,30 @@ if __name__ == "__main__":
     #run="eNATL60-BLB002" # no tide
     #run="eNATL60-BLBT02-S" # with tide
     #run="eNATL60-BLBT02X-S" # with tide suite
-    run = ["eNATL60-BLBT02-S", "eNATL60-BLBT02X-S"]
+    #run = ["eNATL60-BLBT02-S", "eNATL60-BLBT02X-S"]
     # what is `eNATL60-BLB002X-S` `eNATL60-BLB002X-R`?
 
-    files = get_raw_files_with_timeline(run)
+    files = get_zarr_with_timeline(run)
     print("Global start: ", files.index[0])
     print("Global end: ",files.index[-1])
     print("{} files available for processing".format(files.index.size))
 
     # skips files already processed
-    files = get_file_processed(files)
-    files = files.loc[~files["processed"], "files"]
+    #files = get_file_processed(files)
+    #files = files.loc[~files["processed"], "files"]
 
-    #if n_batch>=0:
-    #    file_batches = np.array_split(files, batch_size)
-    #    #print(file_batches)
-    #    #print(file_batches[0])
-    #    files = file_batches[n_batch]
+    if n_batch>=0:
+        file_batches = [files.iloc[i:i+batch_size]
+                        for i in range(0, files.index.size, batch_size)
+                        ]
+        print(file_batches)
+        #print(file_batches[0])
+        files = file_batches[n_batch]
     #    print("Batch start: ", files.index[0])
     #    print("Batch end: ", files.index[-1])
 
     # python script that actually performs the computation
-    pyscript = "daily_mean.py"
+    pyscript = "average_daily_means.py"
     extra_args = None
 
     # get number of tasks
@@ -138,10 +117,14 @@ if __name__ == "__main__":
     task_file = open("task.conf", "w")
     i=0
     for _, f in files.items():
-        task = "{}-{} python {} {} {} {} ".format(i, i, pyscript, f, variable, output_dir)
+        task = "{}-{} python {} {} {} {} ".format(i, i, pyscript,
+                                                  f.index[0],
+                                                  f.index[-1],
+                                                  variable,
+                                                  output_dir)
         if extra_args:
             task = task + " ".join(extra_args)
         if i<ntasks:
             print(task+"\n")
-            task_file.write(task+"\n")
+            #task_file.write(task+"\n")
         i+=1
