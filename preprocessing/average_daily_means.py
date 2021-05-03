@@ -1,10 +1,14 @@
 import os, sys
+from glob import glob
+
+import numpy as np
+import pandas as pd
 
 import numpy as np
 import xarray as xr
 
-from dask.distributed import Client, LocalCluster
-from dask.distributed import performance_report
+#from dask.distributed import Client, LocalCluster
+#from dask.distributed import performance_report
 
 # input parameters
 
@@ -13,7 +17,7 @@ variable = "gridT"
 
 # best if batch_size matches task number in daily_mean.sh (ntasks parameter)
 batch_size = 30 # days
-suffix = str(batch)+"d_average"
+suffix = str(batch_size)+"d_average"
 
 # flag for graph outputs
 graph=False
@@ -46,7 +50,7 @@ def get_zarr_with_timeline():
              .to_frame()
              )
     # add zarr file
-    zarrs["zarr"] = zarr["log"].map(lambda l: l.replace("logs/","")+".zarr")
+    zarrs["zarr"] = zarrs["log"].map(lambda l: l.replace("logs/","")+".zarr")
     # add flag is zarr file exists
     zarrs["flag"] = zarrs["zarr"].map(os.path.isdir)
     return zarrs
@@ -56,7 +60,7 @@ def is_batch_processed(batch_name):
     """
     log_path = os.path.join(output_dir, "logs")
     log_file = os.path.join(log_path, suffix+variable+"_"+batch_name)
-    return os.path.isfile(log_file):
+    return os.path.isfile(log_file)
 
 
 if __name__ == '__main__':
@@ -66,51 +70,25 @@ if __name__ == '__main__':
     #print(client)
 
     zarrs = get_zarr_with_timeline()
-    print(zarrs)
 
-    print("File being processed: "+file_in)
-
+    # generate batch of zarr files
     zarr_batches = [zarrs.iloc[i:i+batch_size]
                     for i in range(0, zarrs.index.size, batch_size)
                     ]
-    #batch_names = [b.index.iloc[0].strftime("%Y%m%d") for b in zarr_batches]
-    print(zarr_batches)
-    #print(batch_names)
-    #print(file_batches[0])
-    #files = file_batches[n_batch]
 
     # loop around batches
     for batch in zarr_batches:
-        batch_name = batch.index.iloc[0].strftime("%Y%m%d")
+        # name batches according to first day of the batch
+        batch_name = batch.index[0].strftime("%Y%m%d")
         if is_batch_processed(batch_name):
             print(batch_name+ " processed - skips")
         else:
             print(batch_name+ " not processed")
+            # check all zarr files are available, exit with error message otherwise
             # process_batch(batch)
-    #   check batch has been processed
-    #   average batch if no
-
-    sys.exit()
 
     ds = xr.open_dataset(file_in, chunks={"time_counter": -1, "deptht": 1, "y": 400,"x": -1})
     #ds = xr.open_dataset(file_in, chunks={"time_counter": -1, "deptht": 1, "y": -1,"x": -1})
-
-    # auto chunks leads to chunks that are 24, 1182, 1182, i.e. 33530976 points
-    # 33530976/8354 = 4013
-    # data variables are 24 x 300 x 4729 x 8354
-
-    # drop redundant variables
-    ds = ds.drop_vars(["nav_lon", "nav_lat"])
-
-    # check log file existence and exit if True
-    date = str(ds["time_counter"].dt.strftime("%Y%m%d")[0].values)
-    log_path = os.path.join(output_dir, "logs")
-    log_file = os.path.join(log_path, "daily_mean_"+variable+"_"+date)
-    if os.path.isfile(log_file):
-        print(" File {} exists, skiping".format(log_file))
-        sys.exit()
-
-    print_graph(ds["votemper"], "open", date, graph)
 
     # debug
     #ds = ds.isel(deptht=slice(0,5))
