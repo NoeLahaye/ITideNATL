@@ -12,10 +12,12 @@ def print_graph(da, name, index, flag):
     """
     if not flag:
         return
-    da.data.visualize(filename='graph_{}_{}.png'.format(name, index),
+    da.data.visualize(filename='graph_daily_{}_{}.png'.format(name, index),
                         optimize_graph=True,
-                        color="order",cmap="autumn", node_attr={"penwidth": "4"})
-
+                        color="order",
+                        cmap="autumn",
+                        node_attr={"penwidth": "4"},
+                        )
 
 if __name__ == '__main__':
 
@@ -47,8 +49,8 @@ if __name__ == '__main__':
 
     # check log file existence and exit if True
     date = str(ds["time_counter"].dt.strftime("%Y%m%d")[0].values)
-    log_path = os.path.join(output_dir, "logs")
-    log_file = os.path.join(log_path, "daily_mean_"+variable+"_"+date)
+    log_dir = os.path.join(output_dir, "logs")
+    log_file = os.path.join(log_dir, "daily_mean_"+variable+"_"+date)
     if os.path.isfile(log_file):
         print(" File {} exists, skiping".format(log_file))
         sys.exit()
@@ -71,8 +73,8 @@ if __name__ == '__main__':
     ds_processed.to_zarr(os.path.join(output_dir, zarr_archive), mode="w")
 
     # create empty file to indicate processing was completed
-    log_path = os.path.join(output_dir, "logs")
-    os.makedirs(log_path, exist_ok=True)
+    log_dir = os.path.join(output_dir, "logs")
+    os.makedirs(log_dir, exist_ok=True)
     with open(log_file, "w+") as f:
         pass
 

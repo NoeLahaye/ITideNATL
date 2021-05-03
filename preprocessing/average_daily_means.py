@@ -1,3 +1,10 @@
+# debug, quasi interactif
+
+# salloc --constraint=BDW28 -N 1 -n 1 -t 10:00
+# srun python average_daily_means.py
+
+# https://www.cines.fr/calcul/faq-calcul-intensif/
+
 import os, sys
 from glob import glob
 
@@ -17,7 +24,7 @@ variable = "gridT"
 
 # best if batch_size matches task number in daily_mean.sh (ntasks parameter)
 batch_size = 30 # days
-suffix = str(batch_size)+"d_average"
+suffix = str(batch_size)+"d_average_"
 
 # flag for graph outputs
 graph=False
@@ -29,9 +36,12 @@ def print_graph(da, name, index, flag):
     """
     if not flag:
         return
-    da.data.visualize(filename='graph_{}_{}.png'.format(name, index),
+    da.data.visualize(filename='graph_average_{}_{}.png'.format(name, index),
                         optimize_graph=True,
-                        color="order",cmap="autumn", node_attr={"penwidth": "4"})
+                        color="order",
+                        cmap="autumn",
+                        node_attr={"penwidth": "4"},
+                        )
 
 def get_zarr_with_timeline():
     """ Build a pandas series with filenames indexed by date
@@ -58,8 +68,8 @@ def get_zarr_with_timeline():
 def is_batch_processed(batch_name):
     """ checks wether batch has been processed
     """
-    log_path = os.path.join(output_dir, "logs")
-    log_file = os.path.join(log_path, suffix+variable+"_"+batch_name)
+    log_dir = os.path.join(output_dir, "logs")
+    log_file = os.path.join(log_dir, suffix+variable+"_"+batch_name)
     return os.path.isfile(log_file)
 
 
@@ -77,38 +87,40 @@ if __name__ == '__main__':
                     ]
 
     # loop around batches
-    for batch in zarr_batches:
-        # name batches according to first day of the batch
-        batch_name = batch.index[0].strftime("%Y%m%d")
-        if is_batch_processed(batch_name):
-            print(batch_name+ " processed - skips")
-        else:
-            print(batch_name+ " not processed")
-            # check all zarr files are available, exit with error message otherwise
-            # process_batch(batch)
+    #for batch in zarr_batches:
+    batch = zarr_batches[0]
+    # name batches according to first day of the batch
+    batch_name = batch.index[0].strftime("%Y%m%d")
+    if is_batch_processed(batch_name):
+        print(batch_name+ " processed - skips")
+    else:
+        print(batch_name+ " not processed")
+        # check all zarr files are available, exit with error message otherwise
+        # process_batch(batch)
+        z = batch.iloc[0, "zarr"]
+        print(z)
 
-    ds = xr.open_dataset(file_in, chunks={"time_counter": -1, "deptht": 1, "y": 400,"x": -1})
-    #ds = xr.open_dataset(file_in, chunks={"time_counter": -1, "deptht": 1, "y": -1,"x": -1})
+        # debug:
+        #batch = batch.iloc[:5, :]
 
-    # debug
-    #ds = ds.isel(deptht=slice(0,5))
-    #print_graph(ds["votemper"], "isel", date, graph)
+        #ds = xr.concat([xr.open_zarr(z) for z batch["zarr"].items()],
+        # dim="time_counter")
 
-    # temporal average
-    ds_processed = ds.mean("time_counter")
-    ds_processed = ds_processed.chunk({"y":-1})
-    #
-    print(ds_processed)
-    print_graph(ds_processed["votemper"], "processed", date, graph)
+        # temporal average
+        #ds_processed = ds.mean("time_counter")
 
-    #with performance_report(filename="dask-report.html"):
-    zarr_archive = "daily_mean_"+variable+"_"+date+".zarr"
-    ds_processed.to_zarr(os.path.join(output_dir, zarr_archive), mode="w")
+        #
+        #print(ds_processed)
+        #print_graph(ds_processed["votemper"], "processed", date, graph)
 
-    # create empty file to indicate processing was completed
-    log_path = os.path.join(output_dir, "logs")
-    os.makedirs(log_path, exist_ok=True)
-    with open(log_file, "w+") as f:
-        pass
+        #with performance_report(filename="dask-report.html"):
+        #zarr_archive = suffix+variable+"_"+batch_name+".zarr"
+        #ds_processed.to_zarr(os.path.join(output_dir, zarr_archive), mode="w")
+
+        # create empty file to indicate processing was completed
+        #log_dir = os.path.join(output_dir, "logs")
+        #log_file = os.path.join(log_dir, suffix+variable+"_"+batch_name)
+        #with open(log_file, "w+") as f:
+        #    pass
 
     print("Congrats, processing is over !")
