@@ -8,6 +8,8 @@
 #SBATCH --time=01:30:00
 #SBATCH --exclusive
 
+# to launch: sbatch daily_mean.sh
+
 ulimit -s unlimited
 
 # activate conda environment, see .bashrc
@@ -33,5 +35,3 @@ end_time="$(date -u +%s)"
 seconds=$(($end_time-$start_time))
 minutes=$(($seconds / 60))
 echo "Total of $minutes minutes elapsed for job"
-
-

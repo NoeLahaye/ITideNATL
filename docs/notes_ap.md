@@ -94,3 +94,22 @@ timeouts:
 	connect: 600s          # time before connecting fails
 	tcp: 600s              # time before calling an unresponsive connection dead
 ```
+
+
+
+```
+aponte@login2:~/ITideNATL/preprocessing$ job_info 11695228-01
+               JobID    JobName      User  Partition        NodeList    Elapsed      State ExitCode     MaxRSS                        AllocTRES
+-------------------- ---------- --------- ---------- --------------- ---------- ---------- -------- ---------- --------------------------------
+            11695228       TAVE    aponte      bdw28           n3383   02:14:36  COMPLETED      0:0            billing=56,cpu=56,energy=123369+
+      11695228.batch      batch                                n3383   02:14:36  COMPLETED      0:0      9118K         cpu=28,mem=59000M,node=1
+          11695228.0  task.conf                                n3383   02:14:30  COMPLETED      0:0  27786460K          cpu=2,mem=59000M,node=1
+```
+
+
+Interactif: https://www.cines.fr/calcul/faq-calcul-intensif/
+
+```
+salloc --constraint=BDW28 -N 1 -n 1 -t 10:00
+srun mon_executable
+```

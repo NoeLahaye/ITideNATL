@@ -12,10 +12,10 @@ def print_graph(da, name, index, flag):
     """
     if not flag:
         return
-    da.data.visualize(filename='graph_{}_{}.png'.format(name, index), 
+    da.data.visualize(filename='graph_{}_{}.png'.format(name, index),
                         optimize_graph=True,
                         color="order",cmap="autumn", node_attr={"penwidth": "4"})
-    
+
 
 if __name__ == '__main__':
 
@@ -26,8 +26,8 @@ if __name__ == '__main__':
 
     # collect arguments
     file_in = sys.argv[1]
-    file_type = sys.argv[2]
-    path_out = sys.argv[3]
+    variable = sys.argv[2]
+    output_dir = sys.argv[3]
 
     # flag for graph outputs
     graph=False
@@ -47,17 +47,17 @@ if __name__ == '__main__':
 
     # check log file existence and exit if True
     date = str(ds["time_counter"].dt.strftime("%Y%m%d")[0].values)
-    log_path = os.path.join(path_out, "logs")
-    log_file = os.path.join(log_path, "daily_mean_"+file_type+"_"+date)
+    log_path = os.path.join(output_dir, "logs")
+    log_file = os.path.join(log_path, "daily_mean_"+variable+"_"+date)
     if os.path.isfile(log_file):
         print(" File {} exists, skiping".format(log_file))
         sys.exit()
 
     print_graph(ds["votemper"], "open", date, graph)
-    
+
     # debug
-    ds = ds.isel(deptht=slice(0,5))
-    print_graph(ds["votemper"], "isel", date, graph)
+    #ds = ds.isel(deptht=slice(0,5))
+    #print_graph(ds["votemper"], "isel", date, graph)
 
     # temporal average
     ds_processed = ds.mean("time_counter")
@@ -66,15 +66,14 @@ if __name__ == '__main__':
     print(ds_processed)
     print_graph(ds_processed["votemper"], "processed", date, graph)
 
-    with performance_report(filename="dask-report.html"):
-        zarr_archive = "daily_mean_"+file_type+"_"+date+".zarr"
-        ds_processed.to_zarr(os.path.join(path_out, zarr_archive), mode="w")
+    #with performance_report(filename="dask-report.html"):
+    zarr_archive = "daily_mean_"+variable+"_"+date+".zarr"
+    ds_processed.to_zarr(os.path.join(output_dir, zarr_archive), mode="w")
 
     # create empty file to indicate processing was completed
-    log_path = os.path.join(path_out, "logs")
+    log_path = os.path.join(output_dir, "logs")
     os.makedirs(log_path, exist_ok=True)
     with open(log_file, "w+") as f:
         pass
 
     print("Congrats, processing is over !")
-
