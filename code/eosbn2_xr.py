@@ -1,3 +1,5 @@
+""" Please use eos.py instead of this eosbn2_xr. This one will not be updated from now on (2021/05/034) """
+
 import xgcm
 
 ### these definition could re-use xorca defs
