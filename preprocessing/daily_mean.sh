@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --nodes=30
-#SBATCH --ntasks=60
+#SBATCH --nodes=60
+#SBATCH --ntasks=120
 #SBATCH --constraint=BDW28
 #SBATCH -J TAVE
 #SBATCH -e tave.e%j

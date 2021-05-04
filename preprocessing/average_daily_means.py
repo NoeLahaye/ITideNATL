@@ -82,9 +82,11 @@ if __name__ == '__main__':
     zarrs = get_zarr_with_timeline()
 
     # generate batch of zarr files
-    zarr_batches = [zarrs.iloc[i:i+batch_size]
+    zarr_batches = [zarrs.iloc[i:min(i+batch_size, zarrs.index.size)]
                     for i in range(0, zarrs.index.size, batch_size)
                     ]
+    for batch in zarr_batches:
+        print(batch.index.size)
 
     # loop around batches
     #for batch in zarr_batches:
@@ -97,17 +99,32 @@ if __name__ == '__main__':
         print(batch_name+ " not processed")
         # check all zarr files are available, exit with error message otherwise
         # process_batch(batch)
-        z = batch.iloc[0, "zarr"]
-        print(z)
+        #z = batch["zarr"].iloc[0]
+        #print(z)
 
         # debug:
         #batch = batch.iloc[:5, :]
+        #ds = xr.open_zarr(z)
+        #print(ds)
 
-        #ds = xr.concat([xr.open_zarr(z) for z batch["zarr"].items()],
-        # dim="time_counter")
+        def open_zarr(z, date):
+            ds = (xr
+                  .open_zarr(z)
+                  .drop_vars("deptht_bounds")
+                  .expand_dims({"time": [pd.Timestamp(date)]})
+            )
+            return ds
+
+        ds = xr.concat([open_zarr(z, date) for date, z in batch["zarr"].items()],
+                       dim="time",       
+                      )
 
         # temporal average
-        #ds_processed = ds.mean("time_counter")
+        ds_processed = ds.mean("time")
+        ds_processed = ds_processed.expand_dims("time")
+        ds_processed["time_start"] = ("time", ds.time[[0]].values)
+        ds_processed["time_end"] = ("time", ds.time[[-1]].values)
+        print(ds_processed)
 
         #
         #print(ds_processed)
