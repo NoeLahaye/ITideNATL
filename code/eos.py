@@ -14,8 +14,8 @@ _zdim = "Z"
 _zcoord = "depth_l"
 _var_names = {"temp": "votemper", "salt": "vosaline", "pref": "depth_c"}
 
-def eosbn2(ds, grid=None, boundary="extend", z_reverse=True):
-    """ compute Brunt-Vaisala frequency
+def bvf2(ds, grid=None, boundary="extrapolate", z_reverse=True):
+    """ compute Brunt-Vaisala frequency squared
     taken from eosbn2 (from CDFTOOLS function eosbn2 in eos.f90)
     if z_reverse: assume that depth is negative and z-grid oriented downwards while weights are positive
     """
