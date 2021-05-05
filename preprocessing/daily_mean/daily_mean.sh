@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --nodes=60
+#SBATCH --ntasks=120
 #SBATCH --constraint=BDW28
 #SBATCH -J TAVE
 #SBATCH -e tave.e%j
 #SBATCH -o tave.o%j
-#SBATCH --time=01:30:00
+#SBATCH --time=04:00:00
 #SBATCH --exclusive
 
 # to launch: sbatch daily_mean.sh
@@ -17,6 +17,7 @@ ulimit -s unlimited
 source /scratch/cnt0024/ige2071/aponte/conda/occigen/bin/activate
 
 # start timer
+date
 start_time="$(date -u +%s)"
 
 # log useful information
@@ -24,16 +25,16 @@ which python # check we are using correct python environment
 echo "Number of tasks = $SLURM_NTASKS"
 
 # generate task.conf
-#srun --mpi=pmi2 -K1 -n $SLURM_NTASKS ./mon_executable param1 param2
-
-#python daily_mean_generate_tasks.py  $SLURM_NTASKS
+python daily_mean_generate_tasks.py  $SLURM_NTASKS
 
 # run processing
-srun --cpus-per-task 28  -K1 -o log_%j-%2t.out -e log_%j-%2t.err python average_daily_means.py
+srun --cpus-per-task 14 -m cyclic  -K1 -o log_%j-%2t.out -e log_%j-%2t.err --multi-prog ./task.conf
 # useful link: https://docs.ycrc.yale.edu/clusters-at-yale/job-scheduling/
 
 # end timer
+date
 end_time="$(date -u +%s)"
 seconds=$(($end_time-$start_time))
 minutes=$(($seconds / 60))
 echo "Total of $minutes minutes elapsed for job"
+

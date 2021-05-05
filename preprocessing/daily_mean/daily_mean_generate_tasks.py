@@ -118,20 +118,17 @@ if __name__ == "__main__":
     files = get_file_processed(files)
     files = files.loc[~files["processed"], "files"]
 
-    #if n_batch>=0:
-    #    file_batches = np.array_split(files, batch_size)
-    #    #print(file_batches)
-    #    #print(file_batches[0])
-    #    files = file_batches[n_batch]
-    #    print("Batch start: ", files.index[0])
-    #    print("Batch end: ", files.index[-1])
-
     # python script that actually performs the computation
     pyscript = "daily_mean.py"
     extra_args = None
 
     # get number of tasks
     ntasks = int(sys.argv[1])
+
+    if ntasks>files.index.size:
+        print("More tasks than files to process")
+        print("you need to decrease task number to {}".format(files.index.size))
+        sys.exit()
 
     print("{} tasks/files processed for now".format(ntasks))
 
