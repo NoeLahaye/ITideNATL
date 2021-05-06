@@ -3,27 +3,14 @@ import os, sys
 import numpy as np
 import xarray as xr
 
-from dask.distributed import Client, LocalCluster
 from dask.distributed import performance_report
 
-def print_graph(da, name, index, flag):
-    """ store dask graph as png
-    see: https://docs.dask.org/en/latest/diagnostics-distributed.html
-    """
-    if not flag:
-        return
-    da.data.visualize(filename='graph_daily_{}_{}.png'.format(name, index),
-                        optimize_graph=True,
-                        color="order",
-                        cmap="autumn",
-                        node_attr={"penwidth": "4"},
-                        )
+import itidenatl.utils as ut
 
 if __name__ == '__main__':
 
     #from dask.distributed import Client, LocalCluster
-    cluster = LocalCluster(n_workers=7, threads_per_worker=1) # these may not be hardcoded
-    client = Client(cluster)
+    cluster, client = ut.spin_up_cluster("local", n_workers=7)
     print(client)
 
     # collect arguments
@@ -34,10 +21,19 @@ if __name__ == '__main__':
     # flag for graph outputs
     graph=False
 
+    # variable key in datasets
+    vkey = ut.vmapping[variable]
+
     print("File being processed: "+file_in)
 
     #ds = xr.open_dataset(file_in)
-    ds = xr.open_dataset(file_in, chunks={"time_counter": -1, "deptht": 1, "y": 400,"x": -1})
+    ds = xr.open_dataset(file_in,
+                         chunks={"time_counter": -1,
+                                 "deptht": 1,
+                                 "y": 400,
+                                 "x": -1,
+                                 },
+                         )
     #ds = xr.open_dataset(file_in, chunks={"time_counter": -1, "deptht": 1, "y": -1,"x": -1})
 
     # auto chunks leads to chunks that are 24, 1182, 1182, i.e. 33530976 points
@@ -49,32 +45,29 @@ if __name__ == '__main__':
 
     # check log file existence and exit if True
     date = str(ds["time_counter"].dt.strftime("%Y%m%d")[0].values)
-    log_dir = os.path.join(output_dir, "logs")
-    log_file = os.path.join(log_dir, "daily_mean_"+variable+"_"+date)
+    log_file = ut.get_log_file(output_dir, "daily_mean_"+variable+"_"+date)
     if os.path.isfile(log_file):
         print(" File {} exists, skiping".format(log_file))
         sys.exit()
 
-    print_graph(ds["votemper"], "open", date, graph)
+    ut.print_graph(ds[vkey], "open_"+date, graph)
 
     # debug
     #ds = ds.isel(deptht=slice(0,5))
-    #print_graph(ds["votemper"], "isel", date, graph)
+    #ut.print_graph(ds[vkey], "isel_"+date, graph)
 
     # temporal average
     ds_processed = ds.mean("time_counter")
     ds_processed = ds_processed.chunk({"y":-1})
     #
     print(ds_processed)
-    print_graph(ds_processed["votemper"], "processed", date, graph)
+    ut.print_graph(ds_processed[vkey], "processed_"+date, graph)
 
     #with performance_report(filename="dask-report.html"):
     zarr_archive = "daily_mean_"+variable+"_"+date+".zarr"
     ds_processed.to_zarr(os.path.join(output_dir, zarr_archive), mode="w")
 
     # create empty file to indicate processing was completed
-    log_dir = os.path.join(output_dir, "logs")
-    os.makedirs(log_dir, exist_ok=True)
     with open(log_file, "w+") as f:
         pass
 

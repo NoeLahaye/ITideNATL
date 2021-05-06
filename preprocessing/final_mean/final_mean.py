@@ -15,9 +15,11 @@ import xarray as xr
 
 from dask.distributed import performance_report
 
+import itidenatl.utils as ut
+
 # input parameters
 
-output_dir="/work/CT1/ige2071/SHARED/mean/"
+output_dir = ut.work_data_dir+"mean/"
 variable = "gridT"
 
 suffix = "global_mean_{}".format(variable)
@@ -28,31 +30,19 @@ local_cluster=True
 dask_jobs = 16
 workers_per_job = 7
 
-scratch_dir="/work/CT1/ige2071/SHARED/scratch/"
-
 # debug flag and graph outputs
 debug=False
 graph=debug
 
-def print_graph(da, name, index, flag):
-    """ store dask graph as png
-    see: https://docs.dask.org/en/latest/diagnostics-distributed.html
-    """
-    if not flag:
-        return
-    da.data.visualize(filename='graph_average_{}_{}.png'.format(name, index),
-                        optimize_graph=True,
-                        color="order",
-                        cmap="autumn",
-                        node_attr={"penwidth": "4"},
-                        )
+# variable key in datasets
+vkey = ut.vmapping[variable]
 
 def get_zarr_with_timeline():
     """ Build a pandas series with filenames indexed by date
     """
     files = sorted(glob(os.path.join(output_dir,
                                      "logs",
-                                     "30d_average_{}_*".format(variable)
+                                     "30d_mean_{}_*".format(variable)
                                      )
                         )
                    )
@@ -69,12 +59,6 @@ def get_zarr_with_timeline():
     zarrs["flag"] = zarrs["zarr"].map(os.path.isdir)
     return zarrs
 
-def get_log_file():
-    """ return log file path
-    """
-    log_dir = os.path.join(output_dir, "logs")
-    log_file = os.path.join(log_dir, suffix)
-    return log_file
 
 def open_zarr(z, date):
     """ load and adjuste dataset
@@ -87,152 +71,51 @@ def open_zarr(z, date):
         ds = ds.isel(deptht=slice(0,2))
     return ds
 
-def removekey(d, key):
-    r = dict(d)
-    del r[key]
-    return r
-
-def cleanup_dir(directory):
-    """ Remove all files and subdirectory inside a directory
-    https://stackoverflow.com/questions/185936/how-to-delete-the-contents-of-a-folder
-    """
-    for filename in os.listdir(directory):
-        file_path = os.path.join(directory, filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-        except Exception as e:
-            print('Failed to delete %s. Reason: %s' % (file_path, e))
-
-def custom_distribute(ds, op, tmp_dir=None, suffix=None, root=True, **kwargs):
-    """ Distribute an embarrasingly parallel calculation manually and store chunks to disk
-    Parameters
-    ----------
-    ds: xr.Dataset
-        Input data
-    op: func
-        Process the data and return a dataset
-    tmp_dir: str, optional
-        temporary output directory
-    suffix: str
-        suffix employed for temporary files
-    **kwargs:
-        dimensions with chunk size, e.g. (..., face=1) processes 1 face a time
-    """
-
-    if suffix is None:
-        suffix="tmp"
-
-    if root:
-        cleanup_dir(tmp_dir)
-
-    d = list(kwargs.keys())[0]
-    c = kwargs[d]
-
-    new_kwargs = removekey(kwargs, d)
-
-    dim = np.arange(ds[d].size)
-    chunks = [dim[i*c:(i+1)*c] for i in range((dim.size + c - 1) // c )]
-
-    D = []
-    Z = []
-    for c, i in zip(chunks, range(len(chunks))):
-        _ds = ds.isel(**{d: slice(c[0], c[-1]+1)})
-        _suffix = suffix+"_{}".format(i)
-        if new_kwargs:
-            _out, _Z = custom_distribute(_ds, op, tmp_dir=tmp_dir, suffix=_suffix, root=False, **new_kwargs)
-            D.append(_out)
-            if root:
-                print("{}: {}/{}".format(d,i,len(chunks)))
-            Z.append(_Z)
-        else:
-            # store
-            out = op(_ds)
-            zarr = os.path.join(tmp_dir, _suffix)
-            Z.append(zarr)
-            out.to_zarr(zarr, mode="w")
-            D.append(xr.open_zarr(zarr))
-            #print("End reached: {}".format(_suffix))
-
-    # merge results back and return
-    ds = xr.concat(D, d) 
-
-    return ds, Z
-
-
 if __name__ == '__main__':
 
     if local_cluster:
-        from dask.distributed import Client, LocalCluster
-        cluster = LocalCluster(n_workers=14, threads_per_worker=1) # these may not be hardcoded
-        client = Client(cluster)
+        cluster, client = spin_up_cluster(type="local", n_workers=14)
     else:
-        from dask_jobqueue import SLURMCluster 
-        from dask.distributed import Client 
-        cluster = SLURMCluster(cores=28,
-                               processes=workers_per_job,
-                               name='pangeo', 
-                               walltime='01:00:00',
-                               job_extra=['--constraint=HSW24',
-                                          '--exclusive',
-                                          '--nodes=1'],
-                               memory="118GB",
-                               interface='ib0',
-                              ) 
-        print(cluster.job_script())
-        cluster.scale(jobs=dask_jobs)
-        client = Client(cluster)
-    
-        flag = True
-        while flag:
-            wk = client.scheduler_info()["workers"]
-            print("Number of workers up = {}".format(len(wk)))
-            sleep(5)
-            if len(wk)>=workers_per_job*dask_jobs*0.8:
-                flag = False
-                print("Cluster is up, proceeding with computations")
+        cluster, client = spin_up_cluster(type="distributed",)
 
     print(client)
 
     zarrs = get_zarr_with_timeline()
 
     ds = xr.concat([open_zarr(z, date) for date, z in zarrs["zarr"].items()],
-                    dim="time",       
+                    dim="time",
                   )
-    print_graph(ds["votemper"], "concat", "", graph)
+    ut.print_graph(ds[vkey], "concat", graph)
     print(ds)
     print("Dataset size = {:.1f} GB".format(ds.nbytes/1e9))
 
-    # compute weights:
+    # compute weights to account for inequal batch lengths
     w = (ds["time_end"]-ds["time_start"])/pd.Timedelta("1D") + 1
-    w = w/w.sum()
+    w = w/w.mean()
     print(w.values)
-    ds["votemper"] = ds["votemper"] * w
-    sys.exit() 
+    ds[vkey] = ds[vkey] * w
 
     # temporal average
     #ds_processed = ds.mean("time")
-    ds_processed, _ = custom_distribute(ds, 
-                                        lambda ds: ds.mean("time"), 
-                                        deptht=depth_custom_chunk,
-                                        tmp_dir=scratch_dir,
-                                        )
+    ds_processed, _ = ut.custom_distribute(ds,
+                                lambda ds: ds.mean("time"),
+                                ut.scratch_dir,
+                                deptht=depth_custom_chunk,
+                                )
     ds_processed = ds_processed.expand_dims("time")
     ds_processed["time_start"] = ("time", ds.time[[0]].values)
     ds_processed["time_end"] = ("time", ds.time[[-1]].values)
 
     #
     #print(ds_processed)
-    print_graph(ds_processed["votemper"], "processed", "", graph)
+    ut.print_graph(ds_processed[vkey], "processed", graph)
 
     with performance_report(filename="dask-report.html"):
         zarr_archive = suffix+".zarr"
         ds_processed.to_zarr(os.path.join(output_dir, zarr_archive), mode="w")
 
     # create empty file to indicate processing was completed
-    log_file = get_log_file()
+    log_file = ut.get_log_file(output_dir, suffix)
     with open(log_file, "w+") as f:
         pass
 
