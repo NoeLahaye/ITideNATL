@@ -2,7 +2,7 @@
 #
 # otherwise for debug, quasi interactif:
 # salloc --constraint=BDW28 -N 1 -n 1 -t 10:00
-# srun python average_daily_means.py
+# srun python final_mean.py
 # see https://www.cines.fr/calcul/faq-calcul-intensif/
 
 import os, sys, shutil
@@ -20,13 +20,11 @@ from dask.distributed import performance_report
 output_dir="/work/CT1/ige2071/SHARED/mean/"
 variable = "gridT"
 
-# best if batch_size matches task number in daily_mean.sh (ntasks parameter)
-batch_size = 30 # days
-suffix = "{}d_average_{}_".format(batch_size, variable)
+suffix = "global_mean_{}".format(variable)
 
 depth_custom_chunk=20 # 10 goes through
 
-local_cluster=False
+local_cluster=True
 dask_jobs = 16
 workers_per_job = 7
 
@@ -54,7 +52,7 @@ def get_zarr_with_timeline():
     """
     files = sorted(glob(os.path.join(output_dir,
                                      "logs",
-                                     "daily_mean_{}_*".format(variable)
+                                     "30d_average_{}_*".format(variable)
                                      )
                         )
                    )
@@ -71,18 +69,12 @@ def get_zarr_with_timeline():
     zarrs["flag"] = zarrs["zarr"].map(os.path.isdir)
     return zarrs
 
-def get_log_file(batch_name):
+def get_log_file():
     """ return log file path
     """
     log_dir = os.path.join(output_dir, "logs")
-    log_file = os.path.join(log_dir, suffix+batch_name)
+    log_file = os.path.join(log_dir, suffix)
     return log_file
-
-def is_batch_processed(batch_name):
-    """ checks wether batch has been processed
-    """
-    log_file = get_log_file(batch_name)
-    return os.path.isfile(log_file)
 
 def open_zarr(z, date):
     """ load and adjuste dataset
@@ -90,7 +82,6 @@ def open_zarr(z, date):
     ds = (xr
           .open_zarr(z)
           .drop_vars("deptht_bounds", errors="ignore")
-          .expand_dims({"time": [pd.Timestamp(date)]})
          )
     if debug:
         ds = ds.isel(deptht=slice(0,2))
@@ -207,61 +198,45 @@ if __name__ == '__main__':
 
     zarrs = get_zarr_with_timeline()
 
-    # generate batch of zarr files
-    zarr_batches = [zarrs.iloc[i:min(i+batch_size, zarrs.index.size)]
-                    for i in range(0, zarrs.index.size, batch_size)
-                    ]
-    for batch in zarr_batches:
-        print(batch.index.size)
+    ds = xr.concat([open_zarr(z, date) for date, z in zarrs["zarr"].items()],
+                    dim="time",       
+                  )
+    print_graph(ds["votemper"], "concat", "", graph)
+    print(ds)
+    print("Dataset size = {:.1f} GB".format(ds.nbytes/1e9))
 
-    # loop around batches
-    #batch = zarr_batches[0]
-    for batch in zarr_batches:
+    # compute weights:
+    w = (ds["time_end"]-ds["time_start"])/pd.Timedelta("1D") + 1
+    w = w/w.sum()
+    print(w.values)
+    ds["votemper"] = ds["votemper"] * w
+    sys.exit() 
 
-        # name batches according to first day of the batch
-        batch_name = batch.index[0].strftime("%Y%m%d")
+    # temporal average
+    #ds_processed = ds.mean("time")
+    ds_processed, _ = custom_distribute(ds, 
+                                        lambda ds: ds.mean("time"), 
+                                        deptht=depth_custom_chunk,
+                                        tmp_dir=scratch_dir,
+                                        )
+    ds_processed = ds_processed.expand_dims("time")
+    ds_processed["time_start"] = ("time", ds.time[[0]].values)
+    ds_processed["time_end"] = ("time", ds.time[[-1]].values)
 
-        if is_batch_processed(batch_name):
-            print(batch_name+ " processed - skips")
-        else:
-            print(batch_name+ " not processed")
+    #
+    #print(ds_processed)
+    print_graph(ds_processed["votemper"], "processed", "", graph)
 
-            # debug:
-            if debug:
-                batch = batch.iloc[:3, :]
+    with performance_report(filename="dask-report.html"):
+        zarr_archive = suffix+".zarr"
+        ds_processed.to_zarr(os.path.join(output_dir, zarr_archive), mode="w")
 
-            ds = xr.concat([open_zarr(z, date) for date, z in batch["zarr"].items()],
-                           dim="time",       
-                          )
-            print_graph(ds["votemper"], "concat", batch_name, graph)
-            #print(ds)
-            print("Dataset size = {:.1f} GB".format(ds.nbytes/1e9))
+    # create empty file to indicate processing was completed
+    log_file = get_log_file()
+    with open(log_file, "w+") as f:
+        pass
 
-            # temporal average
-            #ds_processed = ds.mean("time")
-            ds_processed, _ = custom_distribute(ds, 
-                                                lambda ds: ds.mean("time"), 
-                                                deptht=depth_custom_chunk,
-                                                tmp_dir=scratch_dir,
-                                                )
-            ds_processed = ds_processed.expand_dims("time")
-            ds_processed["time_start"] = ("time", ds.time[[0]].values)
-            ds_processed["time_end"] = ("time", ds.time[[-1]].values)
-
-            #
-            #print(ds_processed)
-            print_graph(ds_processed["votemper"], "processed", batch_name, graph)
-
-            with performance_report(filename="dask-report.html"):
-                zarr_archive = suffix+batch_name+".zarr"
-                ds_processed.to_zarr(os.path.join(output_dir, zarr_archive), mode="w")
-
-            # create empty file to indicate processing was completed
-            log_file = get_log_file(batch_name)
-            with open(log_file, "w+") as f:
-                pass
-
-            print("{} stored".format(batch_name))
+    print("{} global mean stored".format(variable))
 
     if not local_cluster:
         cluster.close()

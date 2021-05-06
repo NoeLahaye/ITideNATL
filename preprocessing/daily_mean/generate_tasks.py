@@ -6,7 +6,6 @@
 # degug
 #python generate_tasks.py $NATL/eNATL60-BLB002-S $SCRATCH temporal_mean.py gridT
 
-
 import os, sys
 from glob import glob
 
@@ -20,24 +19,17 @@ root_data_dir="/work/CT1/hmg2840/lbrodeau/eNATL60/"
 #output_dir="/scratch/cnt0024/ige2071/aponte/tmean/"
 output_dir="/work/CT1/ige2071/SHARED/mean/"
 
+# variable considered
 variable="gridT"
-
-# best if batch_size matches task number in daily_mean.sh (ntasks parameter)
-#batch_size = 30
-
-# which batch we consider
-#n_batch = 0
-
-#tstart="2009-06-30"
-#tend="2009-06-30"
-
-# global start end:
-#2009-06-30 00:00:00
-#2010-10-29 00:00:00
 
 # path to data:
 #   eNATL60-BLB002 experiment (WITHOUT explicit tidal motion)
 #   eNATL60-BLBT02 experiment (WITH explicit tidal motion)
+run = ["eNATL60-BLBT02-S", "eNATL60-BLBT02X-S"]
+
+# global start end:
+#2009-06-30 00:00:00
+#2010-10-29 00:00:00
 
 def _get_raw_files(run, variable):
     """ Return raw netcdf files
@@ -101,13 +93,6 @@ def get_file_processed(files):
     return files
 
 if __name__ == "__main__":
-
-    # select run
-    #run="eNATL60-BLB002" # no tide
-    #run="eNATL60-BLBT02-S" # with tide
-    #run="eNATL60-BLBT02X-S" # with tide suite
-    run = ["eNATL60-BLBT02-S", "eNATL60-BLBT02X-S"]
-    # what is `eNATL60-BLB002X-S` `eNATL60-BLB002X-R`?
 
     files = get_raw_files_with_timeline(run)
     print("Global start: ", files.index[0])
