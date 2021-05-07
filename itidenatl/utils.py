@@ -22,6 +22,39 @@ vmapping = dict(gridT="votemper",
                 gridV="vomecrty",
                 )
 
+def get_zarr_with_timeline(output_dir, name):
+    """ Build a pandas series with zarr paths indexed by date
+    The series is deduced from log files and NOT zarr archives
+    It is assumed the date is last in log filenames
+    e.g. daily_mean_gridT_20100807
+
+    Parameters
+    ----------
+    output_dir: str
+        Path used for outputs, logs should be in output_dir+"logs/"
+    name: str
+        Name of the diagnostic
+    """
+    files = sorted(glob(os.path.join(output_dir,
+                                     "logs",
+                                     name+"_*"
+                                     )
+                        )
+                   )
+    #print(files)
+    time = [f.split("/")[-1].split("_")[-1]
+            for f in files]
+    timeline = pd.to_datetime(time)
+    zarrs = (pd.Series(files, index=timeline, name="log")
+             .sort_index()
+             .to_frame()
+             )
+    # add zarr file
+    zarrs["zarr"] = zarrs["log"].map(lambda l: l.replace("logs/","")+".zarr")
+    # add flag if zarr archive exists
+    zarrs["flag"] = zarrs["zarr"].map(os.path.isdir)
+    return zarrs
+
 def get_log_file(output_dir, name):
     """ return log file path
 
@@ -70,11 +103,13 @@ def spin_up_cluster(type=None, **kwargs):
         dkwargs.update(**kwargs)
         cluster = LocalCluster(**dkwargs) # these may not be hardcoded
         client = Client(cluster)
-    elif type="distributed":
+    elif type=="distributed":
         from dask_jobqueue import SLURMCluster
         from dask.distributed import Client
         assert "processes" in kwargs, "you need to specify a number of processes"
         processes = kwargs["processes"]
+        assert "jobs" in kwargs, "you need to specify a number of dask-queue jobs"
+        jobs = kwargs["jobs"]
         dkwargs = dict(cores=28,
                        name='pangeo',
                        walltime='01:00:00',
@@ -85,8 +120,9 @@ def spin_up_cluster(type=None, **kwargs):
                        interface='ib0',
                        )
         dkwargs.update(**kwargs)
+        dkwargs = _removekey(dkwargs, "jobs")
         cluster = SLURMCluster(**dkwargs)
-        cluster.scale(jobs=dask_jobs)
+        cluster.scale(jobs=jobs)
         client = Client(cluster)
 
         flag = True
@@ -94,7 +130,7 @@ def spin_up_cluster(type=None, **kwargs):
             wk = client.scheduler_info()["workers"]
             print("Number of workers up = {}".format(len(wk)))
             sleep(5)
-            if len(wk)>=processes*dask_jobs*0.8:
+            if len(wk)>=processes*jobs*0.8:
                 flag = False
                 print("Cluster is up, proceeding with computations")
 

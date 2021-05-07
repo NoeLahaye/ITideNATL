@@ -5,9 +5,8 @@
 # srun python final_mean.py
 # see https://www.cines.fr/calcul/faq-calcul-intensif/
 
-import os, sys, shutil
+import os
 from glob import glob
-from time import sleep
 
 import numpy as np
 import pandas as pd
@@ -26,7 +25,7 @@ suffix = "global_mean_{}".format(variable)
 
 depth_custom_chunk=20 # 10 goes through
 
-local_cluster=True
+local_cluster=False
 dask_jobs = 16
 workers_per_job = 7
 
@@ -36,29 +35,6 @@ graph=debug
 
 # variable key in datasets
 vkey = ut.vmapping[variable]
-
-def get_zarr_with_timeline():
-    """ Build a pandas series with filenames indexed by date
-    """
-    files = sorted(glob(os.path.join(output_dir,
-                                     "logs",
-                                     "30d_mean_{}_*".format(variable)
-                                     )
-                        )
-                   )
-    time = [f.split("/")[-1].split("_")[-1]
-            for f in files]
-    timeline = pd.to_datetime(time)
-    zarrs = (pd.Series(files, index=timeline, name="log")
-             .sort_index()
-             .to_frame()
-             )
-    # add zarr file
-    zarrs["zarr"] = zarrs["log"].map(lambda l: l.replace("logs/","")+".zarr")
-    # add flag if zarr archive exists
-    zarrs["flag"] = zarrs["zarr"].map(os.path.isdir)
-    return zarrs
-
 
 def open_zarr(z, date):
     """ load and adjuste dataset
@@ -74,13 +50,17 @@ def open_zarr(z, date):
 if __name__ == '__main__':
 
     if local_cluster:
-        cluster, client = spin_up_cluster(type="local", n_workers=14)
+        cluster, client = ut.spin_up_cluster(type="local", n_workers=14)
     else:
-        cluster, client = spin_up_cluster(type="distributed",)
+        cluster, client = ut.spin_up_cluster(type="distributed", 
+                                             jobs=dask_jobs, 
+                                             processes=workers_per_job,
+                                            )
 
     print(client)
 
-    zarrs = get_zarr_with_timeline()
+    zarrs = ut.get_zarr_with_timeline(output_dir, "30d_mean_"+variable)
+    #print(zarrs)
 
     ds = xr.concat([open_zarr(z, date) for date, z in zarrs["zarr"].items()],
                     dim="time",
@@ -102,7 +82,6 @@ if __name__ == '__main__':
                                 ut.scratch_dir,
                                 deptht=depth_custom_chunk,
                                 )
-    ds_processed = ds_processed.expand_dims("time")
     ds_processed["time_start"] = ("time", ds.time[[0]].values)
     ds_processed["time_end"] = ("time", ds.time[[-1]].values)
 

@@ -6,7 +6,7 @@
 #SBATCH -J TAVE
 #SBATCH -e aved.e%j
 #SBATCH -o aved.o%j
-#SBATCH --time=02:00:00
+#SBATCH --time=01:00:00
 #SBATCH --exclusive
 
 # to launch: sbatch daily_mean.sh
@@ -32,7 +32,7 @@ which python # check we are using correct python environment
 # run processing
 #srun --cpus-per-task 28  -K1 -o log_%j-%2t.out -e log_%j-%2t.err python average_daily_means.py
 #srun --cpus-per-task 28  -K1 -o log_%j-%2t.out -e log_%j-%2t.err python average_daily_means.py
-python average_daily_means.py
+python final_mean.py
 # useful link: https://docs.ycrc.yale.edu/clusters-at-yale/job-scheduling/
 
 # end timer

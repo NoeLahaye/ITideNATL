@@ -20,7 +20,7 @@ root_data_dir="/work/CT1/hmg2840/lbrodeau/eNATL60/"
 output_dir="/work/CT1/ige2071/SHARED/mean/"
 
 # variable considered
-variable="gridT"
+variable="gridS"
 
 # path to data:
 #   eNATL60-BLB002 experiment (WITHOUT explicit tidal motion)

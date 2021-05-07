@@ -2,8 +2,10 @@
 # conda_activate
 # salloc --constraint=BDW28 -N 1 -n 1 -t 10:00
 # srun python quick_plot.py  ... variables (deptht=...)
+# ( https://www.cines.fr/calcul/faq-calcul-intensif/ )
+
 # srun python quick_plot.py mean/30d_average_gridT_20090630.zarr votemper deptht=0
-# https://www.cines.fr/calcul/faq-calcul-intensif/
+# srun python quick_plot.py /work/CT1/ige2071/SHARED/mean/global_mean_gridT.zarr votemper deptht=0
 
 import os, sys
 from glob import glob
@@ -36,6 +38,7 @@ if __name__ == '__main__':
               "y": slice(0, None, 4),
              }
 
+    suffix=""
     if len(sys.argv)>3:
         for s in range(3,len(sys.argv)):
            variable, level = sys.argv[s].split("=")
@@ -45,6 +48,7 @@ if __name__ == '__main__':
            else:
                level = int(level)
            islice[variable] = level
+           suffix=suffix+"_"+variable+str(level)
 
     da = xr.open_zarr(os.path.join(root_dir, file_in))[v]
 
@@ -61,7 +65,7 @@ if __name__ == '__main__':
     fig_name=file_in
     if "/" in file_in:
         fig_name = fig_name.split("/")[-1]
-    fig_name=fig_name.replace(".zarr", ".png")
+    fig_name=fig_name.replace(".zarr", suffix+".png")
     fig_path = os.path.join(output_dir, fig_name)
     fig.savefig(fig_path, dpi=150)
 

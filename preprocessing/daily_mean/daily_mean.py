@@ -9,7 +9,6 @@ import itidenatl.utils as ut
 
 if __name__ == '__main__':
 
-    #from dask.distributed import Client, LocalCluster
     cluster, client = ut.spin_up_cluster("local", n_workers=7)
     print(client)
 
