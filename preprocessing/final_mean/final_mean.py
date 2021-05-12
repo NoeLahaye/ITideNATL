@@ -19,7 +19,7 @@ import itidenatl.utils as ut
 # input parameters
 
 output_dir = ut.work_data_dir+"mean/"
-variable = "gridT"
+variable = "gridS"
 
 suffix = "global_mean_{}".format(variable)
 

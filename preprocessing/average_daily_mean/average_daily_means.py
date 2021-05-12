@@ -18,7 +18,8 @@ import itidenatl.utils as ut
 
 # input parameters
 
-variable = "gridT"
+#variable = "gridT"
+variable = "gridS"
 
 output_dir = ut.work_data_dir+"mean/"
 
@@ -59,10 +60,11 @@ if __name__ == '__main__':
         cluster, client = ut.spin_up_cluster(type="distributed",
                                              jobs=dask_jobs,
                                              processes=workers_per_job,
+                                             walltime='02:00:00',
                                             )
     print(client)
 
-    zarrs = get_zarr_with_timeline(output_dir, "daily_mean_"+variable)
+    zarrs = ut.get_zarr_with_timeline(output_dir, "daily_mean_"+variable)
 
     # generate batch of zarr files
     zarr_batches = [zarrs.iloc[i:min(i+batch_size, zarrs.index.size)]
@@ -81,7 +83,7 @@ if __name__ == '__main__':
         if ut.is_log(output_dir, suffix+batch_name):
             print(batch_name+ " processed - skips")
         else:
-            print(batch_name+ " not processed")
+            print(batch_name+ " processing starts")
 
             # debug:
             if debug:
@@ -92,7 +94,7 @@ if __name__ == '__main__':
                             ],
                            dim="time",
                           )
-            print_graph(ds[vkey], "concat_"+batch_name, graph)
+            ut.print_graph(ds[vkey], "concat_"+batch_name, graph)
             #print(ds)
             print("Dataset size = {:.1f} GB".format(ds.nbytes/1e9))
 
@@ -109,7 +111,7 @@ if __name__ == '__main__':
 
             #
             #print(ds_processed)
-            print_graph(ds_processed[vkey],
+            ut.print_graph(ds_processed[vkey],
                         "processed_"+batch_name,
                         graph,
                         )

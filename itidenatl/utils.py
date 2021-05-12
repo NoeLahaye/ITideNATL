@@ -112,7 +112,7 @@ def spin_up_cluster(type=None, **kwargs):
         jobs = kwargs["jobs"]
         dkwargs = dict(cores=28,
                        name='pangeo',
-                       walltime='01:00:00',
+                       walltime='03:00:00',
                        job_extra=['--constraint=HSW24',
                                   '--exclusive',
                                   '--nodes=1'],
