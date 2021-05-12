@@ -21,19 +21,15 @@ if __name__ == '__main__':
     graph=False
 
     # variable key in datasets
-    vkey = ut.vmapping[variable]
+    vkey = ut.vmapping[variable.replace("-","")]
 
     print("File being processed: "+file_in)
 
-    #ds = xr.open_dataset(file_in)
-    ds = xr.open_dataset(file_in,
-                         chunks={"time_counter": -1,
-                                 "deptht": 1,
-                                 "y": 400,
-                                 "x": -1,
-                                 },
-                         )
-    #ds = xr.open_dataset(file_in, chunks={"time_counter": -1, "deptht": 1, "y": -1,"x": -1})
+    _chunks = dict(time_counter=-1, y=400, x=-1)
+    if variable!="gridT-2D":
+        _chunks["deptht"] = 1
+
+    ds = xr.open_dataset(file_in, chunks=_chunks)
 
     # auto chunks leads to chunks that are 24, 1182, 1182, i.e. 33530976 points
     # 33530976/8354 = 4013

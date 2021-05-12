@@ -7,6 +7,16 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+import itidenatl.utils as ut
+
+# ---------------------------- params, misc ------------------------------------
+
+vmapping = dict(gridT="votemper",
+                gridS="vosaline",
+                gridU="vozocrtx",
+                gridV="vomecrty",
+                gridT2D="sossheig", # ignores all other variables for now
+                )
 
 # ---------------------------- paths -------------------------------------------
 
@@ -14,13 +24,49 @@ raw_data_dir = "/work/CT1/hmg2840/lbrodeau/eNATL60/"
 work_data_dir = "/work/CT1/ige2071/SHARED/"
 scratch_dir="/work/CT1/ige2071/SHARED/scratch/"
 
-# ---------------------------- misc --------------------------------------------
 
-vmapping = dict(gridT="votemper",
-                gridS="vosaline",
-                gridU="vozocrtx",
-                gridV="vomecrty",
-                )
+# ---------------------------- raw netcdf  -------------------------------------
+
+def _get_raw_files(run, variable):
+    """ Return raw netcdf files
+
+    Parameters
+    ----------
+    run: str, list
+        string corresponding to the run or list of strings
+    variable:
+        variable to consider, e.g. ("gridT", "gridS", etc)
+    """
+
+    # multiple runs may be passed at once
+    if isinstance(run, list):
+        files = []
+        for r in run:
+            files = files + _get_raw_files(r, variable)
+        return files
+
+    # single run
+    path_in = os.path.join(raw_data_dir, run)
+    run_dirs = [r for r in sorted(glob(os.path.join(path_in,"0*")))
+            if os.path.isdir(r)
+            ]
+    files = []
+    for r in run_dirs:
+        files = files + sorted(glob(os.path.join(r,"*_"+variable+"_*.nc")))
+
+    return files
+
+def get_raw_files_with_timeline(run, variable):
+    """ Build a pandas series with filenames indexed by date
+    """
+    files = _get_raw_files(run, variable)
+
+    time = [f.split("/")[-1].split("-")[-1].replace(".nc","")
+            for f in files]
+    timeline = pd.to_datetime(time)
+    files = pd.Series(files, index=timeline, name="files").sort_index()
+    return files
+
 
 def get_zarr_with_timeline(output_dir, name):
     """ Build a pandas series with zarr paths indexed by date

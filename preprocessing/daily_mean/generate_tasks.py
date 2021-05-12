@@ -12,15 +12,16 @@ from glob import glob
 import numpy as np
 import pandas as pd
 
-#root_data_dir="/store/CT1/hmg2840/lbrodeau/eNATL60/"
-root_data_dir="/work/CT1/hmg2840/lbrodeau/eNATL60/"
+import itidenatl.utils as ut
 
 # output directory
 #output_dir="/scratch/cnt0024/ige2071/aponte/tmean/"
-output_dir="/work/CT1/ige2071/SHARED/mean/"
+output_dir = ut.work_data_dir+"mean/"
 
 # variable considered
-variable="gridS"
+#variable="gridT"
+#variable="gridS"
+variable="gridT-2D"
 
 # path to data:
 #   eNATL60-BLB002 experiment (WITHOUT explicit tidal motion)
@@ -30,47 +31,6 @@ run = ["eNATL60-BLBT02-S", "eNATL60-BLBT02X-S"]
 # global start end:
 #2009-06-30 00:00:00
 #2010-10-29 00:00:00
-
-def _get_raw_files(run, variable):
-    """ Return raw netcdf files
-
-    Parameters
-    ----------
-    run: str, list
-        string corresponding to the run or list of strings
-    variable:
-        variable to consider, e.g. ("gridT", "gridS", etc)
-    """
-
-    # multiple runs may be passed at once
-    if isinstance(run, list):
-        files = []
-        for r in run:
-            files = files + _get_raw_files(r, variable)
-        return files
-
-    # single run
-    path_in = os.path.join(root_data_dir, run)
-    run_dirs = [r for r in sorted(glob(os.path.join(path_in,"0*")))
-            if os.path.isdir(r)
-            ]
-    files = []
-    for r in run_dirs:
-        files = files + sorted(glob(os.path.join(r,"*_"+variable+"_*.nc")))
-
-    return files
-
-def get_raw_files_with_timeline(run):
-    """ Build a pandas series with filenames indexed by date
-    """
-    files = _get_raw_files(run, variable)
-
-    time = [f.split("/")[-1].split("-")[-1].replace(".nc","")
-            for f in files]
-    timeline = pd.to_datetime(time)
-    files = pd.Series(files, index=timeline, name="files").sort_index()
-
-    return files
 
 def get_file_processed(files):
     """ Add boolean flag is file has already been processed
@@ -94,7 +54,7 @@ def get_file_processed(files):
 
 if __name__ == "__main__":
 
-    files = get_raw_files_with_timeline(run)
+    files = ut.get_raw_files_with_timeline(run, variable)
     print("Global start: ", files.index[0])
     print("Global end: ",files.index[-1])
     print("{} files available for processing".format(files.index.size))
