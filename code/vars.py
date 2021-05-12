@@ -1,9 +1,81 @@
-""" package for computing various fields from NEMO outputs, using xarray and xgcm through xorca library """
+""" package for computing various fields from NEMO outputs, using xarray and xgcm through xorca library    
 
-_pres_dico = dict(ssh=None, var_dens="sigmai", zmet=None, on_t_pts=True, s_dens_ano=False, red_pres=True)
+TODO:
+     - update comp_pres* routines such that ds can be a DataArray only.     
+"""
+_pres_dico = dict(ssh=None, var_dens="sigmai", zmet=None, on_t_pts=True, 
+                  s_dens_ano=False, red_pres=True, rho0=1026., grav=9.81)
 
 def comp_pres(ds, xgrid, **kwargs):
+    """ compute pressure anomaly by vertical integration of local in-situ density
+    density interpolated on w-points, then integration goes from w -> T levels (implementation close to NEMO code)
+    Pressure is computing by vertically integrating density: psurf + int_z \rho dz',
+    with \rho=sigma_i (= potential density - 1000), and psurf = rho0 * ssh (+ dens ano if not variable-volume and s_dens_ano is True)
+    adapted to variable volume formulation (enforced if zmet explicitly passed as an xarray)
+
+    Parameters
+    __________
+    ds: xarray Dataset
+        dataset containing density - 1000. (for vertical integration)
+        May also contain the ssh field and the grid interval
+    xgrid: xgcm.Grid
+        grid associated with ds. metrics will be used for vertical integration (unless delz is passed)
+    zmet: str or xarray DataArray, optional (default: None)
+        name of grid spacing array in ds dataset, or xr.DataArray containing grid spacing, or None (use xgrid metrics)
+    ssh: str or xarray DataArray or bool, optional
+        name of ssh field in ds dataset, or xr.DataArray containing ssh, or None (automatic) of False (use 0)
+    var_dens: str, optional (default: "sigmai")
+        name of density field in ds dataset (assume it is rho-1000)
+    s_dens_ano: bool, optional (default: False)
+        wether full density (rho0 + anomaly) is used for computing the surface pressure anomaly (at z=0) or not. 
+        False is NEMO default
+
+    Returns
+    _______
+    xarray.DataArray containing pressure anomaly
+
+    """
+    dico = _pres_dico.copy()
+    dico.update(kwargs)
+    rho0 = dico["rho0"] # pp_rau0 in CDFtools TODO have this from simulation output files
+    sig0 = rho0-1000.   # rho0 - p_rau0
+    grav = dico["grav"]  # TODO use common default with e.g. xorca
+    s_dens_ano = int(dico["s_dens_ano"]) # 1 or 0: use density anomaly for surface pressure
+    
+    zmet = dico["zmet"]
+    # get density at w points
+    dens =  ds[dico["var_dens"]] - sig0 # now dens is dens-rho0
+    dens = grid.interp(dens, "Z", boundary="fill", fill_value=0) # rho/2 at surface
+    
+    ### vertical integration of density
+    if zmet is None: # this will use grid metrics in xgrid
+        res = xgrid.cumint(dens, "Z")
+    else:
+        if isinstance(zmet, str):
+            zmet = ds[zmet]
+        else:
+            s_dens_ano = False
+        res = xgrid.cumsum(dens*zmet, "Z")
+
+    ### define ssh anomaly       
+    if dico["ssh"] is None:
+        ssh = "sossheig"
+    if not ssh:
+        ssh = 0.
+    elif isinstance(ssh, str):
+        ssh = ds[ssh]
+    
+    ### compute pressure at surface (z=0)
+    psurf = ssh * (s_dens_ano*dens.isel(z_l=0)*2. + rho0) # factor 2 because of previous interp
+    
+    # return pressure: multiply by gravity
+    if dico["red_pres"]:
+        grav /= rho0
+    return grav * (res + psurf)
+
+def comp_pres_w(ds, xgrid, **kwargs):
     """ compute pressure anomaly by vertical integration of local potential density
+    T -> w points
     Pressure is computing by vertically integrating density: psurf + int_z \rho dz',
     with \rho=sigma_i (potential density - 1000)
 
@@ -29,10 +101,6 @@ def comp_pres(ds, xgrid, **kwargs):
     _______
     xarray.DataArray containing pressure anomaly
 
-    TODO
-    ____
-     - update such that ds can be a DataArray only.
-     - verify wether sigmai or (sigmai - 26.0) should be used
     """
     rho0 = 1026. # pp_rau0 in CDFtools TODO have this from simulation output files
     sig0 = rho0-1000.   # rho0 - p_rau0
@@ -53,7 +121,7 @@ def comp_pres(ds, xgrid, **kwargs):
     dens = ds[dico["var_dens"]] - sig0 # now dens is dens-rho0
 
     ### compute pressure at surface (z=0)
-    psurf = ssh * (s_dens_ano*dens + rho0)
+    psurf = ssh * (s_dens_ano*dens.isel(z_c=0) + rho0)
 
     ### vertical integration of density
     zmet = dico["zmet"]
