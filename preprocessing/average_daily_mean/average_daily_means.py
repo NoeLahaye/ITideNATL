@@ -19,7 +19,8 @@ import itidenatl.utils as ut
 # input parameters
 
 #variable = "gridT"
-variable = "gridS"
+#variable = "gridS"
+variable = "gridT-2D"
 
 output_dir = ut.work_data_dir+"mean/"
 
@@ -38,7 +39,7 @@ debug=False
 graph=debug
 
 # variable key in datasets
-vkey = ut.vmapping[variable]
+vkey = ut.vmapping[variable.replace("-","")]
 
 def open_zarr(z, date):
     """ load and adjuste dataset
@@ -99,8 +100,10 @@ if __name__ == '__main__':
             print("Dataset size = {:.1f} GB".format(ds.nbytes/1e9))
 
             # temporal average
-            #ds_processed = ds.mean("time")
-            ds_processed, _ = ut.custom_distribute(ds,
+            if "deptht" not in ds.dims:
+                ds_processed = ds.mean("time")
+            else:
+                ds_processed, _ = ut.custom_distribute(ds,
                                             lambda ds: ds.mean("time"),
                                             ut.scratch_dir,
                                             deptht=depth_custom_chunk,
