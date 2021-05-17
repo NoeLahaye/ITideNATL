@@ -1,16 +1,18 @@
+# global stuff
 *~
-
 .DS_Store
-*.egg-info
-__pycache__
 
 tmp/
 
-task.conf
+__pycache__
+*.egg-info
 
+.ipynb_checkpoints/
+task.conf
 dask-worker-space
 dask-report.html
 
+# preprocessing / averaging specific things
 *.tar
 *.png
 *.svg
@@ -23,4 +25,3 @@ tave.e*
 
 aved.o*
 aved.e*
-
