@@ -278,3 +278,26 @@ def _removekey(d, key):
     r = dict(d)
     del r[key]
     return r
+
+
+# ------------------------- various routines related to routines, options, etc. ------------- #
+_name = {"et":"e3t", "ew":"e3w", "ssh":"sossheig", "mask":"tmask",
+        "zt":"depth_c", "zw":"depth_l"}
+
+def _parse_name_dict(dico, special=None):
+    """ wrapper of _parse_inp_dict to use _name dict as default"""
+    return _parse_inp_dict(dico, _name, special)
+
+def _parse_inp_dict(dico, defo, special=None):
+    """ parse input dictionary containg names for updating the default one """
+    if dico is None:
+        return defo.copy()
+    else:
+        newdic = defo.copy()
+        if isinstance(dico, dict):
+            newdic.update(dico)
+        elif isinstance(dico, str):
+            newdic[special] = dico
+        else:
+            raise ValueError('unable to parse "name" argument')
+        return newdic
