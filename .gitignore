@@ -1,4 +1,27 @@
+# global stuff
 *~
 .DS_Store
+
+tmp/
+
+__pycache__
+*.egg-info
+
 .ipynb_checkpoints/
-dask_worker_space/
+task.conf
+dask-worker-space
+dask-report.html
+
+# preprocessing / averaging specific things
+*.tar
+*.png
+*.svg
+
+*.err
+*.out
+
+tave.o*
+tave.e*
+
+aved.o*
+aved.e*

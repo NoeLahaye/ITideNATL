@@ -2,14 +2,18 @@
 
 ## Organisation of the repository
 * docs: working documents and notes
-* code: python packages developed for the analysis
+* code: python packages / scripts developed for the analysis
 * training: folder for trials et al (sandbox for root directory)
 * dev_notebooks: notebook used for developping some of the routines (sandbox for code/)
 * tutos: notebooks illustrating the use of the various analysis code and routines written
+* itidenatl: core library containing useful objects/methods
 
-Processing notebooks (in clean form) should be at the root of the repository.
+Some processing notebooks (in clean form) can be at the root of the repository.
 
-### Work in progress
-* compute mean fields from eNATL: AP leading, see __averaging__ branch
-* working on sub-region near the Acores (west of Great Meteor Seamount). See __METEOR__ branch.
-* Compute and project vertical modes (now in __METEOR__ branch, work on local dataset. WIP: extend it to full domain computation)
+### preprocessing
+
+The temporal average is performed in three steps:
+
+- computation of daily means with `preprocessing/daily_mean/daily_mean.sh`
+- computation of monthly means with `preprocessing/average_daily_mean/average_daily_means.sh`
+- computation of the global mean with `preprocessing/final_mean/final_mean.sh`
