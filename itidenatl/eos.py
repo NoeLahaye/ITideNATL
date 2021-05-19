@@ -31,7 +31,7 @@ def bvf2(ds, grid=None, boundary="extrapolate", **kwargs):
     grav, z_inv = dico["grav"], dico["z_inv"]
     
     if grid is None: # no xgcm grid passed: use one without metrics (assume mid-depth points = w points)
-        grid = xgcm.Grid(ds)
+        grid = xgcm.Grid(ds, periodic=False)
 
     z_sign = -1. if z_inv else 1.
 
@@ -77,7 +77,7 @@ def bvf2(ds, grid=None, boundary="extrapolate", **kwargs):
         eosbn2 = z_sign * grav * zbeta * ( zalbet * grid.diff(ds[temp], zdim, boundary=boundary) 
                              - grid.diff(ds[salt], zdim, boundary=boundary) ) / ds[zmetric]
 
-    return eosbn2
+    return eosbn2.rename("bvf")
 
 def sigmai(ds, var_names=_defo_dico, inv_p=True):
     """ sigmai_tsp: potential density referenced at depth pref
