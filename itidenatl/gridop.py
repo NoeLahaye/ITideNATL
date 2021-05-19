@@ -33,7 +33,6 @@ def get_hbot(ds, name=None):
         return ds["hbot"]
     else:
         name = _parse_name_dict(name, special="et")
-        print(name, "in get_hbot")
         et, mask = ds[name["et"]], ds[name["mask"]]
         return et.where(mask).sum("z_c").rename("hbot")
 
