@@ -393,11 +393,12 @@ class Vmodes(object):
         **kwargs:
             kwargs passed to `to_zarr`
         """
+        print("kwargs in store:", kwargs)
         ds = self._wrap_in_dataset()
         if isinstance(file_path, str):
             _file = Path(file_path).with_suffix(".zarr")
         else:
-            _file = fire_path.with_suffix(".zarr")
+            _file = file_path.with_suffix(".zarr")
         # undesired singleton time coordinates
         #ds = _move_singletons_as_attrs(ds)
         #
@@ -675,7 +676,7 @@ def _compute_vmodes_1D_stack(N2l, dzc, dzf, **kwargs):
         nans = np.full((dzc.size-lemask.sum(),c.size), np.nan, dtype=N2l.dtype)
         res = np.vstack([c, p, nans, w, nans]).astype(N2l.dtype)
     else:
-        res = np.full((dzc.size * 2 + 1,nmodes), np.nan, dtype=N2l.dtype)
+        res = np.full((dzc.size * 2 + 1,nmodes+1), np.nan, dtype=N2l.dtype)
     return res
 
 def _move_singletons_as_attrs(ds, ignore=[]):
