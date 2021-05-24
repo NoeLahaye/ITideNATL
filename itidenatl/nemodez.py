@@ -6,17 +6,16 @@ The corresponding Sturm-Liouville problem is (phi'/N2)' + lam^2 phi = 0, with pr
 
 TODO: 
     - this could receive some generalization of variable names.
-    - adapt store and load to take pathlib.Path objects or str as input arguments
     - check that handling type is as smart as possible. probably not.
 
 NJAL May 2021 (noe.lahaye@inria.fr)
 """
 
+from pathlib import Path
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as la
 from scipy.linalg import eig
-
 import xarray as xr
 from xgcm import Grid
 
@@ -153,6 +152,8 @@ class Vmodes(object):
                         free_surf=self.free_surf, g=self.g,
                         eig_sigma=self.dicopt["eig_sigma"], z_dims=self._z_dims, z_dels=self._z_del)
         self.ds = xr.merge([self.ds, dm], compat="override")
+        if "chunks" in self.dicopt:
+            self.ds = self.ds.chunk(self.dicopt["chunks"])
         
     def project(self, data, vartype=None, **kwargs):
         """ Project a variable on vertical modes (p-modes or w-modes)
@@ -391,7 +392,9 @@ class Vmodes(object):
             kwargs passed to `to_zarr`
         """
         ds = self._wrap_in_dataset()
-        _file = Path(file_path.rstrip(".zarr")+".zarr")
+        if isinstance(file_path, str):
+            _file = Path(file_path)
+        _file = _file.with_suffix(".zarr")
         # undesired singleton time coordinates
         #ds = _move_singletons_as_attrs(ds)
         #
@@ -502,7 +505,9 @@ def load_vmodes(file_path, xgrid=None, persist=False):
     xgrid: xgcm.Grid object
         Required for grid manipulations
     """
-    ds = xr.open_zarr(file_path.rstrip(".zarr")+".zarr")
+    if isinstance(file_path, str):
+        file_path = Path(file_path)
+    ds = xr.open_zarr(file_path.with_suffix(".zarr"))
     if xgrid is None:
         metrics = {key:val for key,val in ds.attrs.items() if key.startswith("metrics_")}
         metrics = _unwrap_xgcm_grid_metrics(metrics)
@@ -522,7 +527,7 @@ def load_vmodes(file_path, xgrid=None, persist=False):
     if persist:
         vm.ds = vm.ds.persist()
     # search for projections:
-    _pfile = Path(file_path.rstrip('.zarr')+'_projections.zarr')
+    _pfile = Path(file_path.stem+'_projections.zarr')
     if _pfile.is_dir():
         projections = xr.open_zarr(_pfile)
         if persist:
@@ -654,9 +659,14 @@ def _compute_vmodes_1D_stack(N2l, dzc, dzf, **kwargs):
     returns a numpy array of shape (nmode+1, 2*NZ+1) """
     assert N2l.ndim==dzc.ndim==dzf.ndim==1
     lemask = ~np.isnan(dzc)
-    c, p, w = compute_vmodes_1D(N2l[lemask], dzc=dzc[lemask], dzf=dzf[lemask], **kwargs)
-    nans = np.full((dzc.size-lemask.sum(),c.size), np.nan)
-    return np.vstack([c, p, nans, w, nans]).astype(N2l.dtype)
+    nmodes = kwargs["nmodes"]
+    if lemask.sum() > nmodes:
+        c, p, w = compute_vmodes_1D(N2l[lemask], dzc=dzc[lemask], dzf=dzf[lemask], **kwargs)
+        nans = np.full((dzc.size-lemask.sum(),c.size), np.nan, dtype=N2l.dtype)
+        res = np.vstack([c, p, nans, w, nans]).astype(N2l.dtype)
+    else:
+        res = np.full((dzc.size * 2 + 1,nmodes), np.nan, dtype=N2l.dtype)
+    return res
 
 def _move_singletons_as_attrs(ds, ignore=[]):
     """ change singleton variables and coords to attrs
