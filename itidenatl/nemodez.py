@@ -151,7 +151,8 @@ class Vmodes(object):
         wrapper of external function get_vmodes """
         dm = get_vmodes(self.ds, nmodes=self.nmodes,
                         free_surf=self.free_surf, g=self.g,
-                        eig_sigma=self.dicopt["eig_sigma"], z_dims=self._z_dims, z_dels=self._z_del)
+                        eig_sigma=self.dicopt["eig_sigma"], z_dims=self._z_dims, 
+                        z_dels=self._z_del, N2=self._N2name)
         self.ds = xr.merge([self.ds, dm], compat="override")
         if "chunks" in self.dicopt:
             self.ds = self.ds.chunk(self.dicopt["chunks"])
@@ -447,6 +448,8 @@ def get_vmodes(ds, nmodes=_nmod_def, **kwargs):
         gravity constant
     z_dims: list of str, optional
         vertical dimension names in zc, zl (default: "z_c", "z_l")
+    N2: str, optional
+        name of BVF squared variable in ds
 
     Returns:
     ________
@@ -462,16 +465,17 @@ def get_vmodes(ds, nmodes=_nmod_def, **kwargs):
     kworg = kwargs.copy()
     kworg.update({"nmodes":nmodes})
     zc, zl = kwargs["z_dims"]["zc"], kwargs["z_dims"]["zl"]
+    N2 = kworg.get("N2", _dico_def["N2name"])
     
     N = ds[zc].size
     res = xr.apply_ufunc(_compute_vmodes_1D_stack, 
-                         ds[self._N2name].chunk({zl:-1}), 
+                         ds[N2].chunk({zl:-1}), 
                          (ds.e3t.where(ds.tmask)).chunk({zc:-1}),
                          ds.e3w.chunk({zl:-1}),
                          kwargs=kworg, 
                          input_core_dims=[[zl],[zc],[zl]],
                          dask='parallelized', vectorize=True,
-                         output_dtypes=[ds[self._N2name].dtype],
+                         output_dtypes=[ds[N2].dtype],
                          output_core_dims=[["s_stack","mode"]],
                          dask_gufunc_kwargs={"output_sizes":{"mode":nmodes+1,"s_stack":2*N+1}}
                         )
