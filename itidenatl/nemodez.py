@@ -422,7 +422,7 @@ class Vmodes(object):
         #
         # One should try to figure out whether minimal information can be extracted
         # from the xgrid object and store as attribute to the xarray dataset
-        attrs = {key,val for key,val in self.dicopt.items() if not isinstance(val,dict)}
+        attrs = {key:val for key,val in self.dicopt.items() if not isinstance(val,dict)}
         ds = self.ds.assign_attrs(attrs) 
         ds = ds.assign_attrs(**{a: getattr(self, a) for a in _core_attrs})
         ds = ds.assign_attrs(zc_name=self._z_dims['zc'],
