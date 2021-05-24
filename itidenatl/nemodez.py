@@ -108,7 +108,7 @@ class Vmodes(object):
         self._z_del = {"zc": "e3t", "zl": "e3w"}
         self._z_mask = {"zc": "tmask"}
         N2name = self.dicopt["N2name"] 
-	self._N2name = N2name
+        self._N2name = N2name
 
         # create dataset
         if self.dicopt["corr_N"]:
@@ -395,15 +395,15 @@ class Vmodes(object):
         ds = self._wrap_in_dataset()
         if isinstance(file_path, str):
             _file = Path(file_path).with_suffix(".zarr")
-	else:
-	    _file = fire_path.with_suffix(".zarr")
+        else:
+            _file = fire_path.with_suffix(".zarr")
         # undesired singleton time coordinates
         #ds = _move_singletons_as_attrs(ds)
         #
-	if coords:
-	   sds = ds
-	else:
-	    sds = ds.reset_coords(drop=True)
+        if coords:
+            sds = ds    
+        else:
+            sds = ds.reset_coords(drop=True)
         sds.to_zarr(_file, **kwargs)
         print('Store vertical modes in {}'.format(_file.resolve()))
         #
