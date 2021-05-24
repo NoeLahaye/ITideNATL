@@ -21,7 +21,7 @@ from xgcm import Grid
 
 _nmod_def = 10
 _dico_def = {"g": 9.81, "free_surf": True, "eig_sigma":.1, "siz_sparse":30, 
-        "corr_N":True}
+        "corr_N":True, "N2name":"bvf"}
 _core_variables = ['phi', 'phiw', 'c', 'norm']
 _core_attrs = ["g", "nmodes", "free_surf"]
 
@@ -107,7 +107,8 @@ class Vmodes(object):
         self._z_dims = {"zc": "z_c", "zl": "z_l"}
         self._z_del = {"zc": "e3t", "zl": "e3w"}
         self._z_mask = {"zc": "tmask"}
-        N2name = "Nsqr"
+        N2name = self.dicopt["N2name"] 
+	self._N2name = N2name
 
         # create dataset
         if self.dicopt["corr_N"]:
@@ -241,7 +242,7 @@ class Vmodes(object):
             data = self.xgrid.interp(data, "Z", boundary="extrapolate")
         else:
             val_surf = data.isel({zc:0}).drop(zc) ### warning: nearest interpolation at surface
-        prov = (data * self.xgrid.interp(dm.phiw*dm.Nsqr, "Z", boundary="fill", fill_value=0) 
+        prov = (data * self.xgrid.interp(dm.phiw*dm[self._N2name], "Z", boundary="fill", fill_value=0) 
                 * dm[self._z_del["zc"]]
                ).sum(zc)
         
@@ -277,7 +278,7 @@ class Vmodes(object):
         
         if self.free_surf:
             prov += self.g * val_surf * \
-                    (dm.phiw/dm.Nsqr).isel({zl:0}).where(dm.Nsqr.isel({zl:0})!=0., 0.)
+                    (dm.phiw/dm[self._N2name]).isel({zl:0}).where(dm[self._N2name].isel({zl:0})!=0., 0.)
        
         return prov /dm.norm/dm.c**2
 
@@ -373,13 +374,13 @@ class Vmodes(object):
         if align:
             projections, dm = xr.align(projections, dm, join="inner")    
         if on_t_lev:
-            Nsq_phiw = self.xgrid.interp(dm.phiw * dm.Nsqr, "Z", 
+            Nsq_phiw = self.xgrid.interp(dm.phiw * dm[self._N2name], "Z", 
                                     boundary="fill", fill_value=0)
         else:
-            Nsq_phiw = dm.phiw * dm.Nsqr
+            Nsq_phiw = dm.phiw * dm[self._N2name]
         return (projections * Nsq_phiw).sum("mode")
 
-    def store(self, file_path, projections=None, **kwargs):
+    def store(self, file_path, projections=None, coords=True, **kwargs):
         """ Store Vmodes object along with projections into zarr archives
         
         Parameters
@@ -393,12 +394,17 @@ class Vmodes(object):
         """
         ds = self._wrap_in_dataset()
         if isinstance(file_path, str):
-            _file = Path(file_path)
-        _file = _file.with_suffix(".zarr")
+            _file = Path(file_path).with_suffix(".zarr")
+	else:
+	    _file = fire_path.with_suffix(".zarr")
         # undesired singleton time coordinates
         #ds = _move_singletons_as_attrs(ds)
         #
-        ds.to_zarr(_file, **kwargs)
+	if coords:
+	   sds = ds
+	else:
+	    sds = ds.reset_coords(drop=True)
+        sds.to_zarr(_file, **kwargs)
         print('Store vertical modes in {}'.format(_file.resolve()))
         #
         if projections:
@@ -459,13 +465,13 @@ def get_vmodes(ds, nmodes=_nmod_def, **kwargs):
     
     N = ds[zc].size
     res = xr.apply_ufunc(_compute_vmodes_1D_stack, 
-                         ds.Nsqr.chunk({zl:-1}), 
+                         ds[self._N2name].chunk({zl:-1}), 
                          (ds.e3t.where(ds.tmask)).chunk({zc:-1}),
                          ds.e3w.chunk({zl:-1}),
                          kwargs=kworg, 
                          input_core_dims=[[zl],[zc],[zl]],
                          dask='parallelized', vectorize=True,
-                         output_dtypes=[ds.Nsqr.dtype],
+                         output_dtypes=[ds[self._N2name].dtype],
                          output_core_dims=[["s_stack","mode"]],
                          dask_gufunc_kwargs={"output_sizes":{"mode":nmodes+1,"s_stack":2*N+1}}
                         )

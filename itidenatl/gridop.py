@@ -12,7 +12,7 @@ from .utils import _parse_name_dict
 def _get_z_dim(data):
     return next(iter(dim for dim in z_dims if dim in data.dims), None)
     
-def get_hbot(ds, name=None):
+def get_hbot(ds, name=None, overwrite=False):
     """ compute depth (positive) of bottom, "hbot", from grid metrics (interval) and mask 
     For xorca object, NEMO simulation
     
@@ -29,7 +29,7 @@ def get_hbot(ds, name=None):
         xarray DataArray names "hbot" containing bottom depth
     """
     
-    if "hbot" in ds: # just read variable if already present
+    if "hbot" in ds and not overwrite: # just read variable if already present
         return ds["hbot"]
     else:
         name = _parse_name_dict(name, special="et")
