@@ -393,7 +393,6 @@ class Vmodes(object):
         **kwargs:
             kwargs passed to `to_zarr`
         """
-        print("kwargs in store:", kwargs)
         ds = self._wrap_in_dataset()
         if isinstance(file_path, str):
             _file = Path(file_path).with_suffix(".zarr")
