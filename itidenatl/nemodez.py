@@ -21,7 +21,7 @@ from xgcm import Grid
 
 _nmod_def = 10
 _dico_def = {"g": 9.81, "free_surf": True, "eig_sigma":.1, "siz_sparse":30, 
-        "corr_N":True, "N2name":"bvf"}
+        "corr_N":True, "N2name":"bvf", "first_order_formulation":False}
 _core_variables = ['phi', 'phiw', 'c', 'norm']
 _core_attrs = ["g", "nmodes", "free_surf"]
 
@@ -620,47 +620,77 @@ def compute_vmodes_1D(Nsqr, dzc=None, dzf=None, zc=None, zf=None, nmodes=_nmod_d
     else:
         raise ValueError("must specify either grid increments dzc, dzf or z grids zc, zf") 
 
-    ### construct sparse matrices for differentiation
-    # vertical derivative matrix, w-to-p grids, taking left w-points (assume w(N+1)=0)
-    v12 =  np.stack([-1./np.r_[np.ones(1),dzc], 1./np.r_[dzc, np.ones(1)]])
-    Dw2p = sp.spdiags(v12,[1, 0],Nz,Nz,format="lil")
-
-    # vertical derivative matrix, p-to-w grids, targetting inner w points only
-    v12 =  np.stack([-1./np.r_[np.ones(1),dzf], 1./np.r_[dzf, np.ones(1)]])
-    Dp2w = sp.spdiags(v12,[1, 0],Nz-1,Nz,format="lil")
-    
-    ### construct eigenproblem. State vector is (p=-w', w) (w is not true vertical velocity)
-    # eigen problem is 
-    # (1 Dz) * psi = lam * (0 0 ) * psi
-    # (Dz 0)               (0 N2)
-    # plus corrections for boundary condition at the surface
     if free_surf and g>0:
         invg = np.ones(1)/g
     else:
         invg = np.zeros(1)
     Nsqog = Nsqr[:1]*invg
 
-    B = sp.diags(np.r_[np.zeros(Nz), 1.+Nsqog*dz_surf/2., Nsqr[1:]], 0, (2*Nz,2*Nz), format="lil")
-    Awp = sp.vstack([np.r_[-invg, np.zeros(Nz-1)], Dp2w])
-    Aww = None #sp.diags(np.r_[np.ones(1)+Nsqog*dz_surf, np.zeros(Nz-1)], 0, (Nz,Nz))
-    A = sp.bmat([ [ sp.identity(Nz), Dw2p ], 
-                  [ Awp,             Aww  ]
-                ])
+    if kwgs["first_order_formulation"]:
+        ### construct sparse matrices for differentiation
+        # vertical derivative matrix, w-to-p grids, taking left w-points (assume w(N+1)=0)
+        v12 =  np.stack([-1./np.r_[np.ones(1),dzc], 1./np.r_[dzc, np.ones(1)]])
+        Dw2p = sp.spdiags(v12,[1, 0],Nz,Nz,format="lil")
     
-    ### compute numerical solution
-    if Nz >= kwgs["siz_sparse"]:
-        ev,ef = la.eigs(A.tocsc(), k=nmodes+1, M=B.tocsc(), sigma=sigma)
+        # vertical derivative matrix, p-to-w grids, targetting inner w points only
+        v12 =  np.stack([-1./np.r_[np.ones(1),dzf], 1./np.r_[dzf, np.ones(1)]])
+        Dp2w = sp.spdiags(v12,[1, 0],Nz-1,Nz,format="lil")
+        
+        ### construct eigenproblem. State vector is (p=-w', w) (w is not true vertical velocity)
+        # eigen problem is 
+        # (1 Dz) * psi = lam * (0 0 ) * psi
+        # (Dz 0)               (0 N2)
+        # plus corrections for boundary condition at the surface
+        # this free surface condition implementation is uncertain...
+    
+        B = sp.diags(np.r_[np.zeros(Nz), 1.+Nsqog*dz_surf/2., Nsqr[1:]], 0, (2*Nz,2*Nz), format="lil")
+        Awp = sp.vstack([np.r_[-invg, np.zeros(Nz-1)], Dp2w])
+        Aww = None #sp.diags(np.r_[np.ones(1)+Nsqog*dz_surf, np.zeros(Nz-1)], 0, (Nz,Nz))
+        A = sp.bmat([ [ sp.identity(Nz), Dw2p ], 
+                      [ Awp,             Aww  ]
+                    ])
+        
+        ### compute numerical solution
+        if Nz >= kwgs["siz_sparse"]:
+            ev,ef = la.eigs(A.tocsc(), k=nmodes+1, M=B.tocsc(), sigma=sigma)
+        else:
+            Adens = A.toarray()
+            Bdens = B.toarray()
+            ev, ef = eig(Adens, Bdens)
     else:
-        Adens = A.toarray()
-        Bdens = B.toarray()
-        ev, ef = eig(Adens, Bdens)
+        v12 =  np.stack([1./np.r_[dzc, np.ones(1),], -1./np.r_[np.ones(1), dzc]])
+        Dw2p = sp.spdiags(v12,[0, 1],Nz,Nz,format="lil")
 
+        ### vertical derivative matrix, p-to-w grids, targetting inner w points only
+        v12 =  np.stack([1./np.r_[dzf, np.ones(1)], -1./np.r_[dzf, np.ones(1)]])
+        Dp2w = sp.spdiags(v12,[-1, 0],Nz,Nz,format="lil")
+        
+        ### second order diff matrix
+        D2z = Dw2p*Dp2w
+        Dp2w[0,0] = -Nsqog*(1-Nsqog*dz_surf) # surface boundary condition (free or rigid lid)
+
+        ### formulation of the problem : -dz(dz(p)/N^2) = lambda * p
+        A = - Dw2p * sp.diags(1./Nsqr) * Dp2w
+
+        ### compute numerical solution
+        if Nz >= kwgs["siz_sparse"]:
+            ev,ef = la.eigs(A.tocsc(), k=nmodes+1, sigma=sigma)
+        else:
+            ev, ef = eig(A.toarray())
+
+    #### select and arrange modes
     inds = np.isfinite(ev)
     ev, ef = ev[inds].real, ef[:,inds].real
     isort = np.argsort(ev)[:nmodes+1]
     ev, ef = ev[isort], ef[:,isort]
     ef *= np.sign(ef[0,:])[None,:] # positive pressure at the surface
-    pmod, wmod = ef[:Nz,:], -ef[Nz:,:]
+    if kwgs["first_order_formulation"]:
+        pmod, wmod = ef[:Nz,:], -ef[Nz:,:]
+    else:
+        pmod = ef[:Nz,:]
+        wmod = -(Dp2w * pmod) / (Nsqr[:,None] * ev[None,:])
+        if not (free_surf and g>0):
+            wmod[:,0] = 0.
     
     return 1./ev**.5, pmod, wmod
 
