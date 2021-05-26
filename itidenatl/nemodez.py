@@ -112,11 +112,13 @@ class Vmodes(object):
 
         # create dataset
         if self.dicopt["corr_N"]:
-            self.ds = xr.Dataset({N2name:ds[N2name].where(ds[N2name]>=0,0.)})
+            Nmin = 1e-10
+            self.ds = xr.Dataset(coords={N2name:ds[N2name].where(ds[N2name]>=Nmin,Nmin)})
         else:
-            self.ds = xr.Dataset({N2name:ds[N2name]})
-        self.ds = self.ds.assign_coords({val:ds[val] for val in self._z_del.values()})
-        self.ds = self.ds.assign_coords({val:ds[val] for val in self._z_mask.values()})
+            self.ds = xr.Dataset(coords={N2name:ds[N2name]})
+        coords = [v for v in self._z_del.values() if v not in self.ds]
+        coords += [v for v in self._z_mask.values() if v not in self.ds]
+        self.ds = self.ds.assign_coords({co:ds[co] for co in coords})
         
         self._compute_vmodes()        
        
@@ -465,11 +467,10 @@ def get_vmodes(ds, nmodes=_nmod_def, **kwargs):
    
     """
     """ normalization is performed here """
-    print("in get_vmodes:", kwargs)
     kworg = kwargs.copy()
     kworg.update({"nmodes":nmodes})
     zc, zl = kwargs["z_dims"]["zc"], kwargs["z_dims"]["zl"]
-    N2 = kworg.get("N2", _dico_def["N2name"])
+    N2 = kworg.get("N2name", _dico_def["N2name"])
     
     N = ds[zc].size
     res = xr.apply_ufunc(_compute_vmodes_1D_stack, 
@@ -602,7 +603,6 @@ def compute_vmodes_1D(Nsqr, dzc=None, dzf=None, zc=None, zf=None, nmodes=_nmod_d
     kwgs.update(kwargs)
     free_surf, g, sigma = kwgs["free_surf"], kwgs["g"], kwgs["eig_sigma"]
     first_ord = kwgs["first_order_formulation"]
-    print(kwgs)
 
     ### deal with vertical grids
     Nz = Nsqr.size
@@ -667,7 +667,7 @@ def compute_vmodes_1D(Nsqr, dzc=None, dzf=None, zc=None, zf=None, nmodes=_nmod_d
         Dw2p = sp.spdiags(v12,[0, 1],Nz,Nz,format="lil")
 
         ### vertical derivative matrix, p-to-w grids, targetting inner w points only
-        v12 =  np.stack([1./np.r_[dzf, np.ones(1)], -1./np.r_[dzf, np.ones(1)]])
+        v12 =  np.stack([1./np.r_[dzf[1:], np.ones(1)], -1./dzf])
         Dp2w = sp.spdiags(v12,[-1, 0],Nz,Nz,format="lil")
         
         ### second order diff matrix
