@@ -149,10 +149,12 @@ class Vmodes(object):
     def _compute_vmodes(self):
         """ compute vertical modes and store the results into the dataset 
         wrapper of external function get_vmodes """
+        #dm = get_vmodes(self.ds, nmodes=self.nmodes,
+        #                free_surf=self.free_surf, g=self.g,
+        #                eig_sigma=self.dicopt["eig_sigma"], z_dims=self._z_dims, 
+        #                z_dels=self._z_del, N2=self._N2name)
         dm = get_vmodes(self.ds, nmodes=self.nmodes,
-                        free_surf=self.free_surf, g=self.g,
-                        eig_sigma=self.dicopt["eig_sigma"], z_dims=self._z_dims, 
-                        z_dels=self._z_del, N2=self._N2name)
+                        z_dims=self._z_dims, z_dels=self._z_del, **self.dicopt)
         self.ds = xr.merge([self.ds, dm], compat="override")
         if "chunks" in self.dicopt:
             self.ds = self.ds.chunk(self.dicopt["chunks"])
@@ -463,6 +465,7 @@ def get_vmodes(ds, nmodes=_nmod_def, **kwargs):
    
     """
     """ normalization is performed here """
+    print("in get_vmodes:", kwargs)
     kworg = kwargs.copy()
     kworg.update({"nmodes":nmodes})
     zc, zl = kwargs["z_dims"]["zc"], kwargs["z_dims"]["zl"]
@@ -598,6 +601,8 @@ def compute_vmodes_1D(Nsqr, dzc=None, dzf=None, zc=None, zf=None, nmodes=_nmod_d
     kwgs = _dico_def.copy()
     kwgs.update(kwargs)
     free_surf, g, sigma = kwgs["free_surf"], kwgs["g"], kwgs["eig_sigma"]
+    first_ord = kwgs["first_order_formulation"]
+    print(kwgs)
 
     ### deal with vertical grids
     Nz = Nsqr.size
@@ -626,7 +631,7 @@ def compute_vmodes_1D(Nsqr, dzc=None, dzf=None, zc=None, zf=None, nmodes=_nmod_d
         invg = np.zeros(1)
     Nsqog = Nsqr[:1]*invg
 
-    if kwgs["first_order_formulation"]:
+    if first_ord:
         ### construct sparse matrices for differentiation
         # vertical derivative matrix, w-to-p grids, taking left w-points (assume w(N+1)=0)
         v12 =  np.stack([-1./np.r_[np.ones(1),dzc], 1./np.r_[dzc, np.ones(1)]])
@@ -684,7 +689,7 @@ def compute_vmodes_1D(Nsqr, dzc=None, dzf=None, zc=None, zf=None, nmodes=_nmod_d
     isort = np.argsort(ev)[:nmodes+1]
     ev, ef = ev[isort], ef[:,isort]
     ef *= np.sign(ef[0,:])[None,:] # positive pressure at the surface
-    if kwgs["first_order_formulation"]:
+    if first_ord:
         pmod, wmod = ef[:Nz,:], -ef[Nz:,:]
     else:
         pmod = ef[:Nz,:]
