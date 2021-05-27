@@ -79,7 +79,7 @@ def bvf2(ds, grid=None, boundary="extrapolate", **kwargs):
 
     return eosbn2.rename("bvf")
 
-def sigmai(ds, var_names=_defo_dico, inv_p=True):
+def sigmai(ds, inv_p=True, **kwargs):
     """ sigmai_tsp: potential density referenced at depth pref
     adapted from CDFTOOLS sigmai_dep2d (in eos.f90)
     Purpose : Compute the  density referenced to pref (ratio rho/rau0) 
@@ -119,6 +119,9 @@ def sigmai(ds, var_names=_defo_dico, inv_p=True):
     #!!              in situ density anomalie      prd      no units
     #!! --------------------------------------------------------------------
     """
+    var_names = _dico_defo.copy()
+    var_names.update(kwargs)
+
     pref = ds[var_names["pref"]]
     if inv_p:
         pref = -pref
