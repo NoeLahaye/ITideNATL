@@ -119,7 +119,7 @@ def sigmai(ds, inv_p=True, **kwargs):
     #!!              in situ density anomalie      prd      no units
     #!! --------------------------------------------------------------------
     """
-    var_names = _dico_defo.copy()
+    var_names = _defo_dico.copy()
     var_names.update(kwargs)
 
     pref = ds[var_names["pref"]]

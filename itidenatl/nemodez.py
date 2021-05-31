@@ -496,14 +496,15 @@ def get_vmodes(ds, nmodes=_nmod_def, **kwargs):
         dzc = ds[kwargs["z_del"]["zc"]]
     else:
         dzc = ds["e3t"] # use default value for NEMO    
-    norm = (phi**2*dzc).where(ds.tmask).mean(zc) # 1/H \int(phi^2 dz) = 1
-    phi /= norm**.5
+    norm_tg = dzc.where(ds.tmask).sum(zc)
+    norm = (phi**2*dzc).where(ds.tmask).sum(zc) 
+    phi /= (norm/norm_tg)**.5 # 1/H \int(phi^2 dz) = 1
     phiw = (res.isel(s_stack=slice(N+1,2*N+1))
               .rename('phiw')
               .rename({'s_stack': zl})
             #  .assign_coords(z_w=zf)
              ) / norm**.5
-    norm = (phi**2*dzc).where(ds.tmask).sum(zc) # norm = int(phi^2 dz)
+    norm = norm_tg # norm = int(phi^2 dz)
     # merge data into a single dataset
     dm = xr.merge([c.rename("c"), phi.rename("phi"), 
                    phiw.rename("phiw"), norm.rename("norm")

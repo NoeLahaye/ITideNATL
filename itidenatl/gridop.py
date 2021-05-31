@@ -7,11 +7,11 @@ import xarray as xr
 
 from xorca.orca_names import z_dims
 
-from .utils import _parse_name_dict
+from .utils import _parse_name_dict, _da_or_ds
 
 def _get_z_dim(data):
     return next(iter(dim for dim in z_dims if dim in data.dims), None)
-    
+
 def get_hbot(ds, name=None, overwrite=False):
     """ compute depth (positive) of bottom, "hbot", from grid metrics (interval) and mask 
     For xorca object, NEMO simulation
@@ -84,7 +84,7 @@ def get_del_e3z(ds, which=None, ssh=None, hbot=None, name=None):
     if hbot is None:
         hbot = get_hbot(ds, name=name)
         
-    return ds[nam] * ssh / hbot
+    return _da_or_ds(ds,nam) * ssh / hbot
 
 def get_del_e3t(ds, **kwargs):
     """ get grid metrics perturbation at t-level from xarray Dataset or DataArray 
@@ -132,7 +132,7 @@ def get_rec_e3z(ds, which=None, ssh=None, hbot=None, name=None):
     if hbot is None:
         hbot = get_hbot(ds, name=name)
         
-    return ds[nam] * (1. + ssh / hbot)
+    return _da_or_ds(ds,nam) * (1. + ssh / hbot)
         
 def get_rec_e3t(ds, **kwargs):
     """ get perturbated grid metrics at t-level from xarray Dataset or DataArray 
@@ -183,7 +183,7 @@ def get_del_zlev(ds, which=None, ssh=None, hbot=None, name=None):
     if hbot is None:
         hbot = get_hbot(ds, name=name)
     
-    return comp_delz_ssh(hbot + ds[nam], ssh, hbot)
+    return comp_delz_ssh(hbot + _da_or_ds(ds,nam), ssh, hbot)
         
 def get_del_zt(ds, **kwargs):
     """ compute vertical level perturbation at T-levels, due to SSH.
@@ -239,10 +239,7 @@ def corr_zbreath(ds, xgrid, hbot=None, ssh=None, which=None, name=None):
      - implement using metrics from grid object instead of searching for e3t or e3w
     """
     name = _parse_name_dict(name)
-    if isinstance(ds, xr.Dataset):
-        data = ds[which]
-    else:
-        data = ds
+    data = _da_or_ds(ds, which)
     zdim = _get_z_dim(data)
     if zdim:
         nam = name["ew"] if zdim=="z_c" else name["et"] # inverted

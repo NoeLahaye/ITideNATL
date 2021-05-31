@@ -301,3 +301,72 @@ def _parse_inp_dict(dico, defo, special=None):
         else:
             raise ValueError('unable to parse "name" argument')
         return newdic
+
+def _da_or_ds(ds, nam=None):
+    """ return dataarray from dataset or dataarray """
+    if isinstance(ds, xr.Dataset):
+        return ds[nam]
+    else:
+        return ds
+    
+# ------------------------ xarray / xorca related ------------------------------- #
+
+from xorca import orca_names
+
+_offset = {"c":1., "l":.5, "r":1.5}
+_zdims_in_dataset = {"vosaline":"deptht", "votemper":"deptht", 
+                    "vozocrtx":"depthu", "vomecrty":"depthv", "vovecrtz":"depthw", 
+                    "sossheig":None}
+
+def open_one_var(path, chunks="auto", varname=None):
+    """ utilitary function to open datasets for one variable 
+    and return dataset with fixed dimension names and minimal coordinates 
+    Works for 3D (t,y,x) or 4D (t,z,y,x) avriable. Not check for others """
+    ### infer targetted variable name from file names if not provided
+    if not varname:
+        path_ref = path[0] if isinstance(path, list) else path
+        varname = next(v for v in str(path_ref).split("_") if len(v)==8 and v.startswith("vo"))
+    else:
+        if isinstance(path, list): # retain only variable files
+            path = [v for v in path if varname in str(v)]
+            
+    ### update chunk dict
+    if isinstance(chunks, dict):
+        chks = chunks.copy()
+        if _zdims_in_dataset[varname]:
+            chks[_zdims_in_dataset[varname]] = chks.pop("z")
+        else:
+            chks.pop("z")
+        chks["time_counter"] = chks.pop("t")
+    else:
+        chks = chunks
+        
+    ### open dataset
+    if isinstance(path, list):
+        ds = xr.open_mfdataset(path, chunks=chks)
+    else:
+        ds = xr.open_dataset(path, chunks=chks)
+        
+    ### get rid of coordinates and meta variables
+    ds = ds.drop_dims("axis_nbounds").reset_coords(drop=True)
+    ### check that we have a single variable with correct name in the end
+    if len(ds.data_vars)>1:
+        coords = [v for v in ds.data_vars.keys() if v != varname]
+        ds = ds.set_coords(coords)
+    nam = next(k for k in ds.data_vars.keys())
+    assert nam==varname
+    
+    ### proceed to dimension renaming
+    dims = []
+    dims_tg = orca_names.orca_variables[nam]["dims"] # order "t","z","y","x"
+    #if "time_counter" in ds.dims:
+    #    ds = ds.rename({"time_counter":"t"})
+    dims = ["time_counter",] + next(([d] for d in ds.dims if d.startswith("dep")), []) + ["y", "x"]
+    ds = ds.rename({d:dims_tg[i] for i,d in enumerate(dims)})#, zdim:dims_tg[1], "y":dims_tg[2], "x":dims_tg[3]})
+    if len(dims)==4:
+        ds[dims_tg[1]] = np.arange(ds[dims_tg[1]].size, dtype="float32") + _offset[dims_tg[1][-1]]
+    ds = ds.assign_coords({di:np.arange(ds[di].size, dtype="float32") + _offset[di[-1]] 
+                           for di in dims_tg[2:]})
+    
+    return ds
+
