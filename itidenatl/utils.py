@@ -348,7 +348,7 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False):
         ds = xr.open_mfdataset(path, chunks=chks)
     else:
         if verbose:
-	    print("opening", path, "with chunking", chks)
+            print("opening", path, "with chunking", chks)
         ds = xr.open_dataset(path, chunks=chks)
         
     ### get rid of coordinates and meta variables
