@@ -313,7 +313,9 @@ def _da_or_ds(ds, nam=None):
 
 from xorca import orca_names
 
+_orca_names_merged = {**orca_names.orca_coords, **orca_names.orca_variables}
 _offset = {"c":1., "l":.5, "r":1.5}
+# I could parse this from _orca_names_merged
 _zdims_in_dataset = {"vosaline":"deptht", "votemper":"deptht", 
                     "vozocrtx":"depthu", "vomecrty":"depthv", "vovecrtz":"depthw", 
                     "sossheig":None}
@@ -370,3 +372,25 @@ def open_one_var(path, chunks="auto", varname=None):
     
     return ds
 
+def get_one_coord(path, varname, chunks=None, verbose=False):
+    """ get one coordinate avriable from, e.g. mesh mask file
+    works only for one single file to read from. Does not update coords.
+    returns dataset """
+
+    ds = xr.open_dataset(path, chunks=chks)
+    dico = _orca_names_merged.get(varname)#, default=orca_names.orca_variables[varname])
+    d_tg = dico["dims"]
+    if "old_names" in dico:
+        nam = next(d for d in dico["old_names"] if d in ds)
+    else:
+        nam = varname
+    if verbose:
+        print("fetching", nam, "from dataset")
+
+    dimap = {k[0]:k for k in d_tg}
+    lesign = dico.get("force_sign", 1)
+    res = ds.get([nam]).rename(dimap).squeeze()
+    if "force_sign" in dico:
+        res[nam] *= dico["force_sign"]
+
+    return res.rename({nam:varname})
