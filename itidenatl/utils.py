@@ -345,10 +345,12 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
         
     ### open dataset
     if isinstance(path, list):
+        if verbose:
+            print("opening", path, "with chunking", chks, "and kwargs", kwargs)
         ds = xr.open_mfdataset(path, chunks=chks, **kwargs)
     else:
         if verbose:
-            print("opening", path, "with chunking", chks)
+            print("opening", path, "with chunking", chks, "and kwargs", kwargs)
         ds = xr.open_dataset(path, chunks=chks, **kwargs)
         
     ### get rid of coordinates and meta variables
