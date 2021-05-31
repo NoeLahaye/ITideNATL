@@ -320,7 +320,7 @@ _zdims_in_dataset = {"vosaline":"deptht", "votemper":"deptht",
                     "vozocrtx":"depthu", "vomecrty":"depthv", "vovecrtz":"depthw", 
                     "sossheig":None}
 
-def open_one_var(path, chunks="auto", varname=None):
+def open_one_var(path, chunks="auto", varname=None, verbose=False):
     """ utilitary function to open datasets for one variable 
     and return dataset with fixed dimension names and minimal coordinates 
     Works for 3D (t,y,x) or 4D (t,z,y,x) avriable. Not check for others """
@@ -347,6 +347,8 @@ def open_one_var(path, chunks="auto", varname=None):
     if isinstance(path, list):
         ds = xr.open_mfdataset(path, chunks=chks)
     else:
+        if verbose:
+	    print("opening", path, "with chunking", chks)
         ds = xr.open_dataset(path, chunks=chks)
         
     ### get rid of coordinates and meta variables
