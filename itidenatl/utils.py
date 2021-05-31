@@ -376,12 +376,12 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
     
     return ds
 
-def get_one_coord(path, varname, chunks=None, verbose=False):
+def open_one_coord(path, varname, chunks=None, verbose=False):
     """ get one coordinate avriable from, e.g. mesh mask file
     works only for one single file to read from. Does not update coords.
     returns dataset """
 
-    ds = xr.open_dataset(path, chunks=chks)
+    ds = xr.open_dataset(path, chunks=chunks)
     dico = _orca_names_merged.get(varname)#, default=orca_names.orca_variables[varname])
     d_tg = dico["dims"]
     if "old_names" in dico:
