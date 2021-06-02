@@ -125,10 +125,10 @@ def sigmai(ds, inv_p=True, **kwargs):
     pref = ds[var_names["pref"]]
     if inv_p:
         pref = -pref
-    sigmai = sigmai_tsp(ds[var_names["temp"]], ds[var_names["salt"]], pref)
+    sigmai = sigmai_tsp(ds[var_names["temp"]], ds[var_names["salt"]], pref, **kwargs)
     return sigmai
     
-def sigmai_tsp( temp, salt, pref ):
+def sigmai_tsp( temp, salt, pref , **kwargs):
     """ sigmai_tsp: potential density referenced at depth pref
     adapted from CDFTOOLS sigmai_dep2d (in eos.f90)
     Purpose : Compute the  density referenced to pref (ratio rho/rau0) 
@@ -168,6 +168,11 @@ def sigmai_tsp( temp, salt, pref ):
   #!!              in situ density anomalie      prd      no units
   #!! --------------------------------------------------------------------
   """
+
+    if kwargs.get("with_persist", False):
+        # this feature is very likely useless, if not dangerous
+        temp = temp.persist()
+        salt = salt.persist()
 
     dpr4, dpd, dprau0 = 4.8314e-4, -2.042967e-2, 1000.
     dlrs = abs(salt)**.5
