@@ -24,8 +24,41 @@ raw_data_dir = "/work/CT1/hmg2840/lbrodeau/eNATL60/"
 work_data_dir = "/work/CT1/ige2071/SHARED/"
 scratch_dir="/work/CT1/ige2071/SHARED/scratch/"
 
-
 # ---------------------------- raw netcdf  -------------------------------------
+
+   
+def get_eNATL_path(var, its, data_path=Path(raw_data_dir)):
+    """ get path of eNATL raw data given a variable name and time instants (days) 
+    Parameters
+    __________
+    var: str
+        variable name (NEMO OPA name)
+    it: int or list of int
+        date (day of simulation)
+    """
+    ### construct list of raw files, sorted by date (day)
+    subs = "eNATL60-BLBT02?-S/????????-????????/eNATL60-BLBT02?_1h_*_gridS_*.nc"
+    list_files = list(data_path.glob(subs))
+    
+    dico_files = {k.name.rstrip(".nc")[-8:]:k for k in list_files} # dico day:path
+    dates = [k for k in dico_files.keys()] # list of dates (day)
+    dates.sort()
+    
+    ### utilitary function to get file corresponding to one time index and one variable
+    map_varname = {v:k for k,v in ut.vmapping.items()}
+    if map_varname["sossheig"]=="gridT2D":
+        map_varname["sossheig"] = "gridT-2D"
+     
+    if isinstance(its, list):
+        res = []
+        for it in its:
+            path = dico_files[dates[it]]
+            res.append(path.parent/path.name.replace("gridS", map_varname[var]))
+    else:
+        path = dico_files[dates[it]]
+        res = path.parent/path.name.replace("gridS", map_varname[var])
+    return res
+        
 
 def _get_raw_files(run, variable):
     """ Return raw netcdf files
