@@ -2,6 +2,7 @@
 import os, sys, shutil
 from glob import glob
 from time import sleep
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -37,7 +38,7 @@ def get_eNATL_path(var, its, data_path=Path(raw_data_dir)):
         date (day of simulation)
     """
     ### construct list of raw files, sorted by date (day)
-    subs = "eNATL60-BLBT02?-S/????????-????????/eNATL60-BLBT02?_1h_*_gridS_*.nc"
+    subs = "eNATL60-BLBT02*-S/????????-????????/eNATL60-BLBT02*_1h_*_gridS_*.nc"
     list_files = list(data_path.glob(subs))
     
     dico_files = {k.name.rstrip(".nc")[-8:]:k for k in list_files} # dico day:path
@@ -55,7 +56,7 @@ def get_eNATL_path(var, its, data_path=Path(raw_data_dir)):
             path = dico_files[dates[it]]
             res.append(path.parent/path.name.replace("gridS", map_varname[var]))
     else:
-        path = dico_files[dates[it]]
+        path = dico_files[dates[its]]
         res = path.parent/path.name.replace("gridS", map_varname[var])
     return res
         
@@ -347,11 +348,13 @@ def _da_or_ds(ds, nam=None):
 from xorca import orca_names
 
 _orca_names_merged = {**orca_names.orca_coords, **orca_names.orca_variables}
+# update a la mano
+_orca_names_merged["vosigmainsitu"] = _orca_names_merged["votemper"]
 _offset = {"c":1., "l":.5, "r":1.5}
 # I could parse this from _orca_names_merged
-_zdims_in_dataset = {"vosaline":"deptht", "votemper":"deptht", 
-                    "vozocrtx":"depthu", "vomecrty":"depthv", "vovecrtz":"depthw", 
-                    "sossheig":None}
+_zdims_in_dataset = {"vosaline":"deptht", "votemper":"deptht", "vosigmainsitu":"deptht",
+                     "vozocrtx":"depthu", "vomecrty":"depthv", "vovecrtz":"depthw", 
+                     "sossheig":None}
 
 def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
     """ utilitary function to open datasets for one variable 
@@ -387,7 +390,9 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
         ds = xr.open_dataset(path, chunks=chks, **kwargs)
         
     ### get rid of coordinates and meta variables
-    ds = ds.drop_dims("axis_nbounds").reset_coords(drop=True)
+    if "axis_nbounds" in ds.dims:
+        ds = ds.drop_dims("axis_nbounds")
+    ds = ds.reset_coords(drop=True)
     ### check that we have a single variable with correct name in the end
     if len(ds.data_vars)>1:
         coords = [v for v in ds.data_vars.keys() if v != varname]
@@ -397,7 +402,7 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
     
     ### proceed to dimension renaming
     dims = []
-    dims_tg = orca_names.orca_variables[nam]["dims"] # order "t","z","y","x"
+    dims_tg = _orca_names_merged[nam]["dims"] # order "t","z","y","x"
     #if "time_counter" in ds.dims:
     #    ds = ds.rename({"time_counter":"t"})
     dims = ["time_counter",] + next(([d] for d in ds.dims if d.startswith("dep")), []) + ["y", "x"]

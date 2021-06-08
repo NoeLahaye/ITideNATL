@@ -4,7 +4,8 @@ TODO:
      - update comp_pres* routines such that ds can be a DataArray only.     
 """
 _pres_dico = dict(ssh=None, var_dens="sigmai", zmet=None, on_t_pts=True, 
-                  s_dens_ano=False, red_pres=True, rho0=1026., grav=9.81)
+                  s_dens_ano=False, red_pres=True, rho0=1026., grav=9.81, 
+                  rechunk=True)
 
 from .utils import _da_or_ds
 
