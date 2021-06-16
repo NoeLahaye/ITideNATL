@@ -41,7 +41,7 @@ def comp_pres(ds, xgrid, **kwargs):
     dico = _pres_dico.copy()
     dico.update(kwargs)
     rho0 = dico["rho0"] # pp_rau0 in CDFtools TODO have this from simulation output files
-    sig0 = rho0-1000.   # rho0 - p_rau0
+    sig0 = dico.get("sig0", rho0-1000.)   # rho0 - p_rau0
     grav = dico["grav"]  # TODO use common default with e.g. xorca
     s_dens_ano = int(dico["s_dens_ano"]) # 1 or 0: use density anomaly for surface pressure
     if xgrid.axes["Z"]._periodic:

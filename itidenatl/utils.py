@@ -1,5 +1,5 @@
 
-import os, sys, shutil
+import os, shutil
 from glob import glob
 from time import sleep
 from pathlib import Path
@@ -27,23 +27,62 @@ scratch_dir="/work/CT1/ige2071/SHARED/scratch/"
 
 # ---------------------------- raw netcdf  -------------------------------------
 
+def get_list_files(data_path=Path(raw_data_dir), i_days=None):
+    """ not sure this work if i_days is not None, it might take the order of files """
+    subs = "eNATL60-BLBT02*-S/????????-????????/eNATL60-BLBT02*_1h_*_gridS_*.nc"
+    list_files = list(data_path.glob(subs))
+    if i_days is not None:
+        i_days = list(i_days)
+        list_files = [list_files[i] for i in i_days]
+    return list_files
+
+def get_dico_files(data_path=Path(raw_data_dir), i_days=None):
+    """ not sure this work if i_days is not None, it might take the order of files """
+    list_files = get_list_files(data_path=data_path, i_days=i_days)
+    dico_files = {k.name.rstrip(".nc")[-8:]:k for k in list_files} # dico day:path
+    return dico_files
+
+def get_date_from_iday(i_days=None, data_path=Path(raw_data_dir)):
+    """
+    return all dates sorted if i_days is None, dates att day # i_days if i_days is in or list of int
+    format yyymmdd
+
+    Parameters:
+    ___________
+    i_days: int or list (optional)
+
+    Returns:
+    _______
+    str or list of str with dates sorted
+    """
+    
+    list_files = get_list_files(data_path=(Path(raw_data_dir)))
+    dates = [k.name.rstrip(".nc")[-8:] for k in list_files] # list of dates (day)
+    dates.sort()
+
+    if i_days is not None:
+        if isinstance(i_days, int):
+            dates = dates[i_days]
+        elif isinstance(i_days, list):
+            dates = [dates[i] for i in i_days]
+    return dates
+
    
-def get_eNATL_path(var, its, data_path=Path(raw_data_dir)):
+def get_eNATL_path(var=None, its=None, data_path=Path(raw_data_dir)):
     """ get path of eNATL raw data given a variable name and time instants (days) 
     Parameters
     __________
-    var: str
+    var: str (optional)
         variable name (NEMO OPA name)
-    it: int or list of int
-        date (day of simulation)
+        return parent directories if not provided
+    it: int or list of int (optional)
+        date (day of simulation). Returns all available date if not provided
+    data_path: str or pathlib.Path object (optional)
+        parent directory for all simulation data (default: utils.raw_data_dir)
     """
-    ### construct list of raw files, sorted by date (day)
-    subs = "eNATL60-BLBT02*-S/????????-????????/eNATL60-BLBT02*_1h_*_gridS_*.nc"
-    list_files = list(data_path.glob(subs))
-    
-    dico_files = {k.name.rstrip(".nc")[-8:]:k for k in list_files} # dico day:path
-    dates = [k for k in dico_files.keys()] # list of dates (day)
-    dates.sort()
+
+    dates = get_date_from_iday(data_path=data_path)
+    dico_files = get_dico_files(data_path=data_path)
     
     ### utilitary function to get file corresponding to one time index and one variable
     map_varname = {v:k for k,v in ut.vmapping.items()}
@@ -54,10 +93,27 @@ def get_eNATL_path(var, its, data_path=Path(raw_data_dir)):
         res = []
         for it in its:
             path = dico_files[dates[it]]
-            res.append(path.parent/path.name.replace("gridS", map_varname[var]))
-    else:
+            if var is None:
+                name = ""
+            else:
+                name = path.name.replace("gridS", map_varname[var])
+            res.append(path.parent/name)
+    elif isinstance(its, int):
         path = dico_files[dates[its]]
-        res = path.parent/path.name.replace("gridS", map_varname[var])
+        if var is None:
+            name = ""
+        else:
+            name = path.name.replace("gridS", map_varname[var])
+        res = path.parent/name
+    else:
+        res = []
+        for da in dates:
+            path = dico_files[da]
+            if var is None:
+                name = ""
+            else:
+                name = path.name.replace("gridS", map_varname[var])
+            res.append(dico_files[da].parent/name)
     return res
         
 
@@ -366,7 +422,9 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
         varname = next(v for v in str(path_ref).split("_") if len(v)==8 and v.startswith("vo"))
     else:
         if isinstance(path, list): # retain only variable files
-            path = [v for v in path if varname in str(v)]
+            n_path = [v for v in path if varname in str(v)]
+            path = path if len(n_path)==0 else n_path
+
             
     ### update chunk dict
     if isinstance(chunks, dict):
@@ -409,8 +467,11 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
     ds = ds.rename({d:dims_tg[i] for i,d in enumerate(dims)})#, zdim:dims_tg[1], "y":dims_tg[2], "x":dims_tg[3]})
     if len(dims)==4:
         ds[dims_tg[1]] = np.arange(ds[dims_tg[1]].size, dtype="float32") + _offset[dims_tg[1][-1]]
-    ds = ds.assign_coords({di:np.arange(ds[di].size, dtype="float32") + _offset[di[-1]] 
-                           for di in dims_tg[2:]})
+        ds = ds.assign_coords({di:np.arange(ds[di].size, dtype="float32") + _offset[di[-1]] 
+                               for di in dims_tg[2:]})
+    else:
+        ds = ds.assign_coords({di:np.arange(ds[di].size, dtype="float32") + _offset[di[-1]] 
+                               for di in dims_tg[1:]})
     
     return ds
 
@@ -430,9 +491,7 @@ def open_one_coord(path, varname, chunks=None, verbose=False):
         print("fetching", nam, "from dataset")
 
     dimap = {k[0]:k for k in d_tg}
-    lesign = dico.get("force_sign", 1)
     res = ds.get([nam]).rename(dimap).squeeze()
-    if "force_sign" in dico:
-        res[nam] *= dico["force_sign"]
+    res[nam] *= dico.get("force_sign", 1)
 
     return res.rename({nam:varname})
