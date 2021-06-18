@@ -33,7 +33,7 @@ else:
 logging.info("Cluster should be connected")
 
 ### define paths
-grid_mean_path = scratch/"eNATL60_mean_grid_z_cz10.zarr" #"eNATL60_mean_grid_z_one-chk-z.zarr"
+grid_path = Path("/work/CT1/ige2071/nlahaye/eNATL60_rest_grid_cz10.zarr") # scratch/"mesh_mask_eNATL60_3.6.nc" #
 data_path = Path("/work/CT1/hmg2840/lbrodeau/eNATL60")
 
 ### define chunking
@@ -53,11 +53,17 @@ for di in ("x", "y"):
 logging.info("finished setting up parameters, starting to load data")
 
 ### load mean grid (associated with year-mean ssh)
-ds_gm = xr.open_zarr(grid_mean_path)
-ds_gm = ds_gm.set_coords([c for c in ds_gm.data_vars if c != "sossheig"])
-if False: # apply chunking. WARNING: this seems to be the cause of work halting
-    ds_gm = ds_gm.chunk({k:v for k,v in chunks_tg.items() if k in ds_gm.dims})
-
+if grid_path.suffix == ".zarr": # reading from zarr
+    if False:
+        ds_gm = xr.open_zarr(grid_path)
+        if False: # apply chunking. WARNING: this seems to be the cause of work halting
+            ds_gm = ds_gm.chunk({k:v for k,v in chunks_tg.items() if k in ds_gm.dims})
+    else:
+        ds_gm = xr.open_zarr(grid_path, chunks={k:v for k,v in chunks_tg.items() if k not in ["t"]})
+else:
+    ds_gm = ut.open_one_coord(grid_path, "e3t", chunks=chunks)
+    ds_gm = ds_gm.merge(ut.open_one_coord(grid_path, "tmask", chunks=chunks))
+    
 ### open temperature, salinity and ssh
 # Load SSH 
 v = "sossheig"
