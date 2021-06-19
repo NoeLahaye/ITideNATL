@@ -415,7 +415,13 @@ _zdims_in_dataset = {"vosaline":"deptht", "votemper":"deptht", "vosigmainsitu":"
 def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
     """ utilitary function to open datasets for one variable 
     and return dataset with fixed dimension names and minimal coordinates 
-    Works for 3D (t,y,x) or 4D (t,z,y,x) avriable. Not check for others """
+    Works for 3D (t,y,x) or 4D (t,z,y,x) variable. Not check for others 
+    
+    Parameters
+    __________
+    TODO
+
+    """
     ### infer targetted variable name from file names if not provided
     if not varname:
         path_ref = path[0] if isinstance(path, list) else path
@@ -424,9 +430,9 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
         if isinstance(path, list): # retain only variable files
             n_path = [v for v in path if varname in str(v)]
             path = path if len(n_path)==0 else n_path
-
             
     ### update chunk dict
+    chunk_after = kwargs.get("chunk_after", False)
     if isinstance(chunks, dict):
         chks = chunks.copy()
         if _zdims_in_dataset[varname]:
@@ -438,14 +444,15 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
         chks = chunks
         
     ### open dataset
+    chk_op = "auto" if chunk_after else chks
+    if verbose:
+        print("opening", path, "with chunking", chk_op, "and kwargs", kwargs)
     if isinstance(path, list):
-        if verbose:
-            print("opening", path, "with chunking", chks, "and kwargs", kwargs)
-        ds = xr.open_mfdataset(path, chunks=chks, **kwargs)
+        ds = xr.open_mfdataset(path, chunks=chk_op, **kwargs)
     else:
-        if verbose:
-            print("opening", path, "with chunking", chks, "and kwargs", kwargs)
-        ds = xr.open_dataset(path, chunks=chks, **kwargs)
+        ds = xr.open_dataset(path, chunks=chk_op, **kwargs)
+    if chunk_after:
+        ds = ds.chunk(chks)
         
     ### get rid of coordinates and meta variables
     if "axis_nbounds" in ds.dims:
