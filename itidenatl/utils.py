@@ -479,6 +479,13 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
     else:
         ds = ds.assign_coords({di:np.arange(ds[di].size, dtype="float32") + _offset[di[-1]] 
                                for di in dims_tg[1:]})
+    # add axis attributes to dimension coordinates for xgcm
+    for dim in [d for d in dims_tg if d[0] in "xyz"]:
+        ds[dim].attrs["axis"] = ds[dim].attrs.get("axis", dim[0].upper())
+        if dim.endswith("l"):
+            ds[dim].attrs["c_grid_axis_shift"] = ds[dim].attrs.get("c_grid_axis_shift",-0.5)
+        elif dim.endswith("r"):
+            ds[dim].attrs["c_grid_axis_shift"] = ds[dim].attrs.get("c_grid_axis_shift",+0.5)
     
     return ds
 

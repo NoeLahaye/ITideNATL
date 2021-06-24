@@ -21,7 +21,7 @@ from xgcm import Grid
 from itidenatl.nemodez import Vmodes
 #import itidenatl.eos as eos
 #import itidenatl.vars as var
-from proj_pres_utils import get_pres
+from proj_utils import get_pres
 #import itidenatl.gridop as gop
 import itidenatl.utils as ut
 
