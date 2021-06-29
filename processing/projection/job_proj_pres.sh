@@ -1,18 +1,18 @@
 #!/bin/bash
 #SBATCH -J projp		        ### job name
-#SBATCH --nodes=3
+#SBATCH --nodes=2
 ##SBATCH --ntasks=0
 #SBATCH --ntasks-per-node=8
 #SBATCH --cpus-per-task=3
 #SBTACH --threads-per-core=1
 #SBATCH --mem=118000        ### using nodes with 128Go
 #SBATCH --constraint=HSW24
-#SBATCH --time=01:30:00
+#SBATCH --time=04:00:00
 #SBATCH -e outjob_proj_p.e%j
 #SBATCH -o outjob_proj_p.o%j
 #SBATCH --exclusive
-SBATCH --mail-user=noe.lahaye@inria.fr # Receive e-mail from slurm
-SBATCH --mail-type=END # Type of e-mail from slurm; other options are: Error, Info.
+#SBATCH --mail-user=noe.lahaye@inria.fr # Receive e-mail from slurm
+#SBATCH --mail-type=END # Type of e-mail from slurm; other options are: Error, Info.
 
 # to launch: sbatch "name of this script"
 set -e
@@ -22,7 +22,6 @@ set -e
 eval "$(conda shell.bash hook)"
 conda activate /scratch/cnt0024/ige2071/nlahaye/conda/conda38
 nmpi=$SLURM_NTASKS #$(( $SLURM_NTASKS + 1 )) # this is (dangerous) cheating
-
 
 #### one method for initializing a dask cluster. 
 #   I did not manage to get it work on occigen
@@ -35,15 +34,16 @@ nmpi=$SLURM_NTASKS #$(( $SLURM_NTASKS + 1 )) # this is (dangerous) cheating
 #scheduler_file="$HOME/working_on/processing/scheduler.json"
 
 echo "slurm job id" $SLURM_JOBID
-echo "now doing it" `date`
+echo "now doing it" `date`, $SLURM_NNODES" nodes, "$nmpi" tasks, "$SLURM_CPUS_PER_TASK" cpu/task"
 
 prog_name=proj_pres_ty-loop.py # proj_pres_ty-loop_local.py #
 prog_work=${prog_name%".py"}.$SLURM_JOBID.py
-i_day=9 # $(seq 0 4)
+i_day=$(seq 3 4)
 
 cp $prog_name $prog_work
 
 srun -n $nmpi python $prog_work $i_day
+#srun -n $nmpi python ../testings/my_dask_script.py
 
 echo "finished" `date`
 

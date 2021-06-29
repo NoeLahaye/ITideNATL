@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-""" proj_pres_ty-loop.py
+""" proj_uv_ty-loop.py
 script for projecting the horizontal velocity anomaly on vertical modes
 Dedicated to the analysis of eNATL60. All "static" fields (grid, vertical modes, mean pressure...) must have been computed previously and put in a zarr archive
 
 Strategy: to limit memory usage and gain computational time, this script makes a loop over y segments and iterate over time within this loop. 
 This allows to operate over subdomains olong x coordinate by selecting non-land bands for each y segment, and to persist smaller portions of the static fields once for each time.
+A different chunking is employed when storing the results, which must be chosen with care.
 
 It is nonetheless theoretically possible to treat the whole space domain, and/or the whol time domain. If processing several days, distinct input files are read and output files will be created. It is therefore mandatory to keep a loop in time over these files (e.g. nk_t<=24)
 
@@ -48,11 +49,11 @@ logging.info("Cluster should be connected -- dashboard at {}".format(client.dash
 
 ### define chunking and computational subdomains (y, t)
 chunks = {"t":1, "z":10, "y":100, "x":-1}
-nk_t = 2 # process nk_t instants at a time (must be a divider of 24)
+chk_store = {"t":-1, "mode":1, "y":400, "x":-1} 
+nk_t = 3 # process nk_t instants at a time (must be a divider of nt_f)
 sk_y = 200 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size)
-assert 24%nk_t == 0 and sk_y%chunks["y"] == 0
 var = "u" # choose "u" or "v"
-restart = 0 # continue previously stopped job (y segments). 0, False or None to start from beginning
+restart = False # continue previously stopped job (y segments). False or None to start from beginning creating a new zarr archive
 
 ### read time ("day of simu in data") from sys.argv, or use here-defined value
 if len(sys.argv)>1: #N.B.: we can process several days
@@ -80,6 +81,8 @@ log_file = "proj_{}_{}.log".format(var, "{}") #.format(i_day)
 ###  ---------------------- End of user-defined parameters ----------------  ###
 ###  ----------------------------------------------------------------------  ###
 
+nt_f = 24 # time instants per file
+assert nt_f%nk_t == 0 and sk_y%chunks["y"] == 0
 ### get date (day) and check for existing log files
 sim_dates = ut.get_date_from_iday(i_days)
 for da in sim_dates:
@@ -125,6 +128,9 @@ logging.info("opened velocity and SSH data -- ellapsed time {:.1f} s".format(tim
 
 uvec = get_uv_mean_grid(ds.isel(t=slice(0,24)), ds_g, grid)
 amod = proj_puv(uvec, ds_g)
+# store chunks in terms of target dimensions
+chk_store = {d:chk_store[next(k for k in chk_store.keys() if d.startswith(k))] for d in amod.dims}
+amod = amod.chunk(chk_store)
 logging.info("created amod object, total size {:.1f} GB".format(amod.nbytes/1e9))
 
 ### create zarr archives
@@ -149,7 +155,7 @@ region = {d:slice(0,None) for d in amod.dims}
 chk_x = max(1, chunks["x"]) # this is bypassing chunking in x if it has size -1 (for to_zarr with region)
 
 tmp = "{}-{}".format(i_days[0],i_days[-1]) if len(i_days)>1 else str(i_days[0])
-with performance_report(filename="perf-report_proj-pres_{}.html".format(tmp)):
+with performance_report(filename="perf-report_proj-{}_{}.html".format(var,tmp)):
     for jj in range(restart,len(ind_y)-1):
         logging.info("starting y segment # {}".format(jj))
         sliy = slice(ind_y[jj], ind_y[jj+1])
@@ -173,7 +179,7 @@ with performance_report(filename="perf-report_proj-pres_{}.html".format(tmp)):
         logging.info("persisted sds_g")
         # compute pres and project on vertical modes + clean amod
         uvec = get_uv_mean_grid(sds, sds_g, grid)
-        amod = proj_puv(uvec, sds_g)
+        amod = proj_puv(uvec, sds_g).chunk({dim_h["y"]:chk_store[dim_h["y"]]})
     
         ### loop in time for computing and storing
         logging.info("starting time loop")
@@ -183,7 +189,9 @@ with performance_report(filename="perf-report_proj-pres_{}.html".format(tmp)):
             slit = slice(it*nk_t,(it+1)*nk_t)
             region["t"] = slit
             da = sim_dates[it//24]
-            amod.isel(t=slit).to_zarr(out_dir/out_file.format(da), mode="a", compute=True, region=region, safe_chunks=False)
+            amod.isel(t=slit).chunk({"t":-1}).to_zarr(out_dir/out_file.format(da), mode="a", 
+                                                      compute=True, region=region, safe_chunks=False
+                                                      )
             logging.info("iteration y={}, t={}, ellapsed time {:.1f} s".format(jj, it, time.time()-tmes))
         logging.info("chunk y={} took {:.2f} min (mean /x-point/t: {:.2f} ms)".format(
                 jj, (time.time()-tmea)/60., (time.time()-tmea)/(24*(slix.stop-slix.start))*1e3)
@@ -197,6 +205,6 @@ for i,da in enumerate(sim_dates):
     with open(log_dir/log_file.format(da), "w") as fp:
         fp.write("JOB ID: {}\n".format(os.getenv("SLURM_JOBID")))
         fp.write("python script: {}\n".format(sys.argv[0]))
-        fp.write("i_day {}\n".format(i_days[i]))
-        fp.write("nk_t {}, sk_y {}, chunks {}\n".format(nk_t, sk_y, chunks))
+        fp.write("i_days {}, dates {}\n".format(i_days[i],sim_dates))
+        fp.write("nk_t {}, sk_y {}, working chunks {}, store chunks {}\n".format(nk_t, sk_y, chunks, chk_store))
 

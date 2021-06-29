@@ -7,6 +7,7 @@ Dedicated to the analysis of eNATL60. All "static" fields (grid, vertical modes,
 
 Strategy: to limit memory usage and gain computational time, this script makes a loop over y segments and iterate over time within this loop. 
 This allows to operate over subdomains olong x coordinate by selecting non-land bands for each y segment, and to persist smaller portions of the static fields once for each time.
+A different chunking is employed when storing the results, which must be chosen with care.
 
 It is nonetheless theoretically possible to treat the whole space domain, and/or the whol time domain. If processing several days, distinct input files are read and output files will be created. It is therefore mandatory to keep a loop in time over these files (e.g. nk_t<=24)
 
@@ -35,7 +36,7 @@ if True:
     from dask_mpi import initialize
     #initialize(nthreads=4, interface="ib0", memory_limit=21e9, 
     #initialize(nthreads=2, interface="ib0", memory_limit=11e9, 
-    initialize(nthreads=3, interface="ib0", memory_limit=17e9, 
+    initialize(nthreads=3, interface="ib0", memory_limit=17e9, \
             dashboard=True, local_directory=scratch)
     client=Client()
 else:
@@ -48,10 +49,10 @@ logging.info("Cluster should be connected -- dashboard at {}".format(client.dash
 
 ### define chunking and computational subdomains (y, t)
 chunks = {"t":1, "z":10, "y":100, "x":-1}
-nk_t = 4 # process nk_t instants at a time (must be a divider of 24)
-sk_y = 200 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size)
-assert 24%nk_t == 0 and sk_y%chunks["y"] == 0
-restart = 0 # continue previously stopped job (y segments). 0, False or None to start from beginning
+chk_store = {"t":-1, "mode":1, "y":400, "x":-1} 
+nk_t = 3 # process nk_t instants at a time (must be a divider of 24 (nt_f))
+sk_y = 200 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size / chunk store)
+restart = False # continue previously stopped job (y segments). False or None to start from beginning
 
 ### read time ("day of simu in data") from sys.argv, or use here-defined value
 if len(sys.argv)>1: #N.B.: we can process several days
@@ -78,11 +79,14 @@ log_file = "proj_pres_{}.log" #.format(i_day)
 ###  ---------------------- End of user-defined parameters ----------------  ###
 ###  ----------------------------------------------------------------------  ###
 
+nt_f = 24 # time instant per file
+assert nt_f%nk_t == 0 and sk_y%chunks["y"] == 0
 ### get date (day) and check for existing log files
 sim_dates = ut.get_date_from_iday(i_days)
 for da in sim_dates:
     if (log_dir/log_file.format(da)).exists():
         raise ValueError("{} already processed? found corresponding log file".format(da))
+        os._exit()
     logging.info("will process date {}".format(da))
 
 if region["x"].start > 0 and drop_land_x:
@@ -120,19 +124,32 @@ logging.info("opened T, S and SSH data -- ellapsed time {:.1f} s".format(time.ti
 ###  -----------------  Start Computation  -------------------------------  ###
 ###  ---------------------------------------------------------------------  ###
 
-pres = get_pres(ds.isel(t=slice(0,24)), ds_g, grid, with_persist=False)
+pres = get_pres(ds, ds_g, grid, with_persist=False)
 pmod = proj_pres(pres, ds_g)
+# store chunks in terms of target dimensions
+chk_store = {d:chk_store[next(k for k in chk_store.keys() if d.startswith(k))] for d in pmod.dims}
+pmod = pmod.chunk(chk_store)
 logging.info("created pmod object, total size {:.1f} GB".format(pmod.nbytes/1e9))
 
 ### create zarr archives
-if restart is None or restart is False:
-    restart = 0
-if restart:
+if not (restart is None or restart is False):
     logging.info("continuing previous job at iy={}, will append in zarr archives".format(restart))
 else:
-    for da in sim_dates: 
+    for i,da in enumerate(sim_dates): 
+        from_files = ", ".join([str(grid_mode_path), str(ut.get_eNATL_path("votemper", i_days[i])), 
+                               str(ut.get_eNATL_path("vosaline", i_days[i])),
+                                str(ut.get_eNATL_path("sossheig", i_days[i]))
+                               ])
+        pmod.attrs = {"from_files": from_files, "generating_script": sys.argv[0], 
+                      "by": "N. Lahaye (noe.lahaye@inria.fr)", 
+                      "date generated": logging.time.asctime(), 
+                      "simulation": "eNATL60 (with tides)",
+                      "day of simulation": da, "i_day": i_days[i]
+                     }
         tmes = time.time()
-        pmod.to_zarr(out_dir/out_file.format(da), compute=False, mode="w", consolidated=True, safe_chunks=False)
+        slit = slice(i*nt_f,(i+1)*nt_f)
+        pmod.isel(t=slit).to_zarr(out_dir/out_file.format(da), compute=False, 
+                                                mode="w", consolidated=True)
         logging.info("creating zarr took {:.2f} s".format(time.time()-tmes))
     logging.info("created zarr archives for storing modal projection")
 
@@ -169,7 +186,7 @@ with performance_report(filename="perf-report_proj-pres_{}.html".format(tmp)):
         logging.info("persisted sds_g")
         # compute pres and project on vertical modes + clean pmod
         pres = get_pres(sds, sds_g, grid, with_persist=False)
-        pmod = proj_pres(pres, sds_g)
+        pmod = proj_pres(pres, sds_g).chunk({"y_c":chk_store["y_c"]})
     
         ### loop in time for computing and storing
         logging.info("starting time loop")
@@ -177,9 +194,11 @@ with performance_report(filename="perf-report_proj-pres_{}.html".format(tmp)):
         for it in range(Nt//nk_t):
             tmes = time.time()
             slit = slice(it*nk_t,(it+1)*nk_t)
-            region["t"] = slit
-            da = sim_dates[it//24]
-            pmod.isel(t=slit).to_zarr(out_dir/out_file.format(da), mode="a", compute=True, region=region, safe_chunks=False)
+            region["t"] = slice( (it*nk_t)%nt_f, ((it+1)*nk_t-1)%nt_f + 1 )
+            da = sim_dates[(it*nk_t)//nt_f]
+            pmod.isel(t=slit).chunk({"t":-1}).to_zarr(out_dir/out_file.format(da), mode="a", 
+                                                      compute=True, region=region, safe_chunks=False
+                                                     )
             logging.info("iteration y={}, t={}, ellapsed time {:.1f} s".format(jj, it, time.time()-tmes))
         logging.info("chunk y={} took {:.2f} min (mean /x-point/t: {:.2f} ms)".format(
                 jj, (time.time()-tmea)/60., (time.time()-tmea)/(24*(slix.stop-slix.start))*1e3)
@@ -194,6 +213,5 @@ for i,da in enumerate(sim_dates):
     with open(log_dir/log_file.format(da), "w") as fp:
         fp.write("JOB ID: {}\n".format(os.getenv("SLURM_JOBID")))
         fp.write("python script: {}\n".format(sys.argv[0]))
-        fp.write("i_day {}\n".format(i_days[i]))
-        fp.write("nk_t {}, sk_y {}, chunks {}\n".format(nk_t, sk_y, chunks))
-
+        fp.write("i_day {}, i_days {}, date {}\n".format(i_days[i],i_days,sim_dates))
+        fp.write("nk_t {}, sk_y {}, working chunks {}, store chunks {}\n".format(nk_t, sk_y, chunks, chk_store))
