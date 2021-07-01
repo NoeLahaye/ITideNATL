@@ -70,7 +70,7 @@ worksha = Path("/work/CT1/ige2071/SHARED")
 
 data_path = Path("/work/CT1/hmg2840/lbrodeau/eNATL60")
 grid_mode_path = scratch/"eNATL60_grid_vmodes_proj_pres.zarr" 
-out_dir = worksha/"modal_proj"
+out_dir = worksha/"modal_proj/modam_pres"
 out_file = "modamp_pres_global_{}.zarr" #"modamp_subdom_{}.zarr" #.format(date)
 log_dir = Path(os.getenv("HOME"))/"working_on/processing/log_proj_pres"
 log_file = "proj_pres_{}.log" #.format(i_day)

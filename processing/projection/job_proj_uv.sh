@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH -J projp		        ### job name
-#SBATCH --nodes=2
+#SBATCH -J projuv		        ### job name
+#SBATCH --nodes=1
 ##SBATCH --ntasks=0
 #SBATCH --ntasks-per-node=8
 #SBATCH --cpus-per-task=3
@@ -8,8 +8,8 @@
 #SBATCH --mem=118000        ### using nodes with 128Go
 #SBATCH --constraint=HSW24
 #SBATCH --time=02:30:00
-#SBATCH -e outjob_proj_p.e%j
-#SBATCH -o outjob_proj_p.o%j
+#SBATCH -e outjob_proj_uv.e%j
+#SBATCH -o outjob_proj_uv.o%j
 #SBATCH --exclusive
 #SBATCH --mail-user=noe.lahaye@inria.fr # Receive e-mail from slurm
 #SBATCH --mail-type=END # Type of e-mail from slurm; other options are: Error, Info.

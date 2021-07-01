@@ -50,7 +50,7 @@ logging.info("Cluster should be connected -- dashboard at {}".format(client.dash
 ### define chunking and computational subdomains (y, t)
 chunks = {"t":1, "z":10, "y":100, "x":-1}
 chk_store = {"t":-1, "mode":1, "y":400, "x":-1} 
-nk_t = 3 # process nk_t instants at a time (must be a divider of nt_f)
+nk_t = 1 # process nk_t instants at a time (must be a divider of nt_f)
 sk_y = 200 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size)
 if len(sys.argv)>1:
     var = sys.argv[1]
@@ -75,7 +75,7 @@ worksha = Path("/work/CT1/ige2071/SHARED")
 data_path = Path("/work/CT1/hmg2840/lbrodeau/eNATL60")
 grid_uv_path = worksha/"vmodes/phi_{}_10.zarr".format(var)
 grid_mode_path = scratch/"eNATL60_grid_vmodes_proj_pres.zarr" 
-out_dir = worksha/"modal_proj"
+out_dir = worksha/"modal_proj/modamp_{}".format(var)
 out_file = "modamp_{}_global_{}.zarr".format(var, "{}") #.format(date)
 log_dir = Path(os.getenv("HOME"))/"working_on/processing/log_proj_uv"
 log_file = "proj_{}_{}.log".format(var, "{}") #.format(i_day)
