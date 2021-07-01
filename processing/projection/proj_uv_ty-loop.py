@@ -136,7 +136,7 @@ ds["sossheig"] = ds["sossheig"].chunk({dim_itp+"_r":chunks[dim_itp]})
 ###  -----------------  Start Computation  -------------------------------  ###
 ###  ---------------------------------------------------------------------  ###
 
-uvec = get_uv_mean_grid(ds, ds_g, grid)
+uvec = get_uv_mean_grid(ds, grid, ds_g)
 amod = proj_puv(uvec, ds_g)
 # store chunks in terms of target dimensions
 chk_store = {d:chk_store[next(k for k in chk_store.keys() if d.startswith(k))] for d in amod.dims}
@@ -202,7 +202,7 @@ with performance_report(filename="perf-report_proj-{}_{}.html".format(var,tmp)):
         sds_g = sds_g.persist()
         logging.info("persisted sds_g")
         # compute pres and project on vertical modes + clean amod
-        uvec = get_uv_mean_grid(sds, sds_g, grid)
+        uvec = get_uv_mean_grid(sds, grid, sds_g)
         amod = proj_puv(uvec, sds_g).chunk({dim_h["y"]:chk_store[dim_h["y"]]})
     
         ### loop in time for computing and storing
