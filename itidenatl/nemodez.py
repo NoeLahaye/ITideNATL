@@ -247,9 +247,10 @@ class Vmodes(object):
             data = self.xgrid.interp(data, "Z", boundary="extrapolate")
         else:
             val_surf = data.isel({zc:0}).drop(zc) ### warning: nearest interpolation at surface
-        prov = (data * self.xgrid.interp(dm.phiw*dm[self._N2name], "Z", boundary="fill", fill_value=0) 
-                * dm[self._z_del["zc"]]
-               ).sum(zc)
+        prov = (data * self.xgrid.interp(dm.phiw*dm[self._N2name], "Z", boundary="fill", 
+                                        fill_value=0
+                                        ) * dm[self._z_del["zc"]]
+               ).where(dm[self._z_mask["zc"]]).sum(zc)
         
         if self.free_surf:
             prov += self.g * dm.phiw.isel({zl:0}) * val_surf
@@ -279,7 +280,7 @@ class Vmodes(object):
             val_surf = data.isel({zc:0}).drop(zc) ### warning: nearest interpolation at surface
         prov = (data * self.xgrid.interp(dm.phiw, "Z", boundary="fill", fill_value=0) 
                 * dm[self._z_del["zc"]]
-               ).sum(zc)
+               ).where(dm[self._z_mask["zc"]]).sum(zc)
         
         if self.free_surf:
             prov += self.g * val_surf * \
