@@ -53,7 +53,7 @@ chk_store = {"t":-1, "mode":1, "y":400, "x":-1}
 nk_t = 3 # process nk_t instants at a time (must be a divider of nt_f)
 sk_y = 200 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size)
 var = "u" # choose "u" or "v"
-restart = False # continue previously stopped job (y segments). False or None to start from beginning creating a new zarr archive
+restart = False # continue previously stopped job (y segments). False or None starts from beginning creating a new zarrstore 
 
 ### read time ("day of simu in data") from sys.argv, or use here-defined value
 if len(sys.argv)>1: #N.B.: we can process several days
@@ -70,8 +70,8 @@ region = {"t":slice(0,None), "x":slice(0,None), "y":slice(0,None)}
 worksha = Path("/work/CT1/ige2071/SHARED")
 
 data_path = Path("/work/CT1/hmg2840/lbrodeau/eNATL60")
-grid_mode_path = worksha/"vmodes/phi_{}_10.zarr".format(var)
-#grid_uv_path = scratch/"eNATL60_grid_vmodes_proj_pres.zarr" 
+grid_uv_path = worksha/"vmodes/phi_{}_10.zarr".format(var)
+grid_mode_path = scratch/"eNATL60_grid_vmodes_proj_pres.zarr" 
 out_dir = worksha/"modal_proj"
 out_file = "modamp_{}_global_{}.zarr".format(var, "{}") #.format(date)
 log_dir = Path(os.getenv("HOME"))/"working_on/processing/log_proj_uv"
@@ -101,26 +101,32 @@ for di in ("x", "y"):
 logging.info("finished setting up parameters, starting to load data")
 
 ### Load static fields (grid, vmodes, pres...) and select region
-ds_g = xr.open_zarr(grid_mode_path) #, drop_variables=["phi", "norm", "e3t_m"])
+ds_g = xr.open_zarr(grid_uv_path) #, drop_variables=["phi", "norm", "e3t_m"])
 ds_g = ds_g.chunk({k:v for k,v in chunks_tg.items() if k in ds_g.dims})
 ds_g = ds_g.isel({d:region[d[0]] for d in ds_g.dims if d[0] in region})
-grid = Grid(ds_g, periodic=False) # TODO correct this (missing z_l)
-logging.info("opened static fields, reading from {}".format(grid_mode_path.name))
+ds_x = xr.open_zarr(grid_mode_path) # need this to get some info on the z_l grid
+logging.info("opened static fields, reading from {}, {}".format(grid_uv_path.name, grid_mode_path.name))
 
-### open temperature, salinity and ssh
+### open velocity and ssh
 uv_name = {"u":"vozocrtx", "v":"vomecrty"}[var]
+dim_itp = "xy"["uv".index(var)]
 les_var = [uv_name, "sossheig"]
 v = les_var[0]
 tmes = time.time()
 ds = ut.open_one_var(ut.get_eNATL_path(v, i_days), chunks=chunks, varname=v)
 for v in les_var[1:]:
-    ds = ds.merge(ut.open_one_var(ut.get_eNATL_path(v,i_days), chunks=chunks, varname=v))
-## Load SSH 
-#v = "sossheig"
-#dssh = ut.open_one_var(ut.get_eNATL_path(v, i_days), chunks=chunks, varname=v)
-#ds = ds.merge(dssh.reset_coords(drop=True), join="inner")
+    ds = ds.merge(ut.open_one_var(ut.get_eNATL_path(v,i_days), chunks=chunks, varname=v)\
+                    .reset_coords(drop=True))
 ds = ds.isel({d:region[d[0]] for d in ds.dims if d[0] in region})
 logging.info("opened velocity and SSH data -- ellapsed time {:.1f} s".format(time.time()-tmes))
+
+# dataset for grid only
+ds_x = ds.get(list(ds.dims.keys())).merge(ds_x.get(list(ds_x.dims.keys()))).reset_coords(drop=True)
+grid = Grid(ds_x)
+
+# interp ssh
+ds["sossheig"] = grid.interp(ds["sossheig"], dim_itp.upper(), boundary="extend")
+ds["sossheig"] = ds["sossheig"].chunk({dim_itp+"_r":chunks[dim_itp]})
 
 ###  ---------------------------------------------------------------------  ###
 ###  -----------------  Start Computation  -------------------------------  ###
@@ -134,16 +140,27 @@ amod = amod.chunk(chk_store)
 logging.info("created amod object, total size {:.1f} GB".format(amod.nbytes/1e9))
 
 ### create zarr archives
-if restart is None or restart is False:
-    restart = 0
-if restart:
+if not (restart is None or restart is False):
     logging.info("continuing previous job at iy={}, will append in zarr archives".format(restart))
 else:
-    for da in sim_dates: 
+    for id,da in enumerate(sim_dates): 
+        from_files = ", ".join([str(grid_mode_path), str(grid_uv_path),
+                                str(ut.get_eNATL_path(uv_name, i_days[i])), 
+                               str(ut.get_eNATL_path("sossheig", i_days[i]))
+                               ])
+        amod.attrs = {"from_files": from_files, "generating_script": sys.argv[0], 
+                      "by": "N. Lahaye (noe.lahaye@inria.fr)", 
+                      "date generated": logging.time.asctime(), 
+                      "simulation": "eNATL60 (with tides)",
+                      "day of simulation": da, "i_day": i_days[i]
+                     }
         tmes = time.time()
-        amod.to_zarr(out_dir/out_file.format(da), compute=False, mode="w", consolidated=True, safe_chunks=False)
+        slit = slice(i*nt_f,(i+1)*nt_f)
+        amod.isel(t=slit).to_zarr(out_dir/out_file.format(da), compute=False, 
+                                 mode="w", consolidated=True)
         logging.info("creating zarr took {:.2f} s".format(time.time()-tmes))
     logging.info("created zarr archives for storing modal projection")
+    restart = 0.
 
 ### loop over y and time (computation happens here)
 Nt = amod.t.size
@@ -187,8 +204,8 @@ with performance_report(filename="perf-report_proj-{}_{}.html".format(var,tmp)):
         for it in range(Nt//nk_t):
             tmes = time.time()
             slit = slice(it*nk_t,(it+1)*nk_t)
-            region["t"] = slit
-            da = sim_dates[it//24]
+            region["t"] = slice( (it*nk_t)%nt_f, ((it+1)*nk_t-1)%nt_f + 1 )
+            da = sim_dates[(it*nk_t)//nt_f]
             amod.isel(t=slit).chunk({"t":-1}).to_zarr(out_dir/out_file.format(da), mode="a", 
                                                       compute=True, region=region, safe_chunks=False
                                                       )
