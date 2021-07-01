@@ -2,13 +2,13 @@
 
 ## Organisation of the repository
 * docs: working documents and notes
-* code: python packages / scripts developed for the analysis
 * training: folder for trials et al (sandbox for root directory)
-* dev_notebooks: notebook used for developping some of the routines (sandbox for code/)
-* tutos: notebooks illustrating the use of the various analysis code and routines written
 * itidenatl: core library containing useful objects/methods
+* pre-processing: computing mean fields (temperature, salinity, SSH) prior to mean stratification and vertical modes computation
+* processing: compute mean stratification, mean grid and vertical modes + project variables on vertical modes
+* post-processing: analyse modally projected variables
 
-Some processing notebooks (in clean form) can be at the root of the repository.
+Warning: some processing notebooks (in clean form) can be at the root of the repository.
 
 ### preprocessing
 
@@ -17,3 +17,12 @@ The temporal average is performed in three steps:
 - computation of daily means with `preprocessing/daily_mean/daily_mean.sh`
 - computation of monthly means with `preprocessing/average_daily_mean/average_daily_means.sh`
 - computation of the global mean with `preprocessing/final_mean/final_mean.sh`
+
+### processing
+
+ - `pre-proj/` contains notebooks for computing the ean stratification, computing/creating the mean grid zarr store 
+ - `vmodes` contains the notebooks for computing the vertical modes
+ -  `projection` contains scripts for projecting the variables on the vertical modes (at this stage: pressure and horizontal velocity)
+
+### post-processing
+

@@ -169,9 +169,7 @@ else:
 ### loop over y and time (computation happens here)
 Nt = amod.t.size
 dim_h = {k:next(d for d in amod.dims if d.startswith(k+"_")) for k in ["x", "y"]}
-ind_y = np.r_[ np.arange(0, int(ds.dims[dim_h["y"]].size), sk_y), 
-                int(ds.dims[dim_h["y"]].size)
-             ]
+ind_y = np.r_[ np.arange(0, ds.dims[dim_h["y"]], sk_y), ds.dims[dim_h["y"]] ]
 logging.info("starting loop over y and time, \n computing {0} segments of size {1} \
 in time and {2} segments of size {3} in y".format(Nt//nk_t,nk_t,len(ind_y)-1, sk_y)
             )
