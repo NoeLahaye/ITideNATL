@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-""" proj_uv_ty-loop.py
+""" python proj_uv_ty-loop.py [u,v] [i_days]
 script for projecting the horizontal velocity anomaly on vertical modes
 Dedicated to the analysis of eNATL60. All "static" fields (grid, vertical modes, mean pressure...) must have been computed previously and put in a zarr archive
 
@@ -52,12 +52,15 @@ chunks = {"t":1, "z":10, "y":100, "x":-1}
 chk_store = {"t":-1, "mode":1, "y":400, "x":-1} 
 nk_t = 3 # process nk_t instants at a time (must be a divider of nt_f)
 sk_y = 200 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size)
-var = "u" # choose "u" or "v"
+if len(sys.argv)>1:
+    var = sys.argv[1]
+else:
+    var = "u" # choose "u" or "v"
 restart = False # continue previously stopped job (y segments). False or None starts from beginning creating a new zarr store 
 
 ### read time ("day of simu in data") from sys.argv, or use here-defined value
-if len(sys.argv)>1: #N.B.: we can process several days
-    i_days = [int(k) for k in sys.argv[1:]]
+if len(sys.argv)>2: #N.B.: we can process several days
+    i_days = [int(k) for k in sys.argv[2:]]
 else:
     i_days = [0] # default value (list)
 

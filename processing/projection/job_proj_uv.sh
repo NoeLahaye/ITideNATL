@@ -11,8 +11,8 @@
 #SBATCH -e outjob_proj_p.e%j
 #SBATCH -o outjob_proj_p.o%j
 #SBATCH --exclusive
-SBATCH --mail-user=noe.lahaye@inria.fr # Receive e-mail from slurm
-SBATCH --mail-type=END # Type of e-mail from slurm; other options are: Error, Info.
+#SBATCH --mail-user=noe.lahaye@inria.fr # Receive e-mail from slurm
+#SBATCH --mail-type=END # Type of e-mail from slurm; other options are: Error, Info.
 
 # to launch: sbatch "name of this script"
 set -e
@@ -34,16 +34,16 @@ nmpi=$SLURM_NTASKS #$(( $SLURM_NTASKS + 1 )) # this is (dangerous) cheating
 # >>> client = Client(scheduler_file='~/scheduler.json')
 #scheduler_file="$HOME/working_on/processing/scheduler.json"
 
-echo "slurm job id" $SLURM_JOBID
-echo "now doing it" `date`
+echo "now doing it" `date` "JOB ID:" $SLURM_JOBID
 
-prog_name=proj_pres_ty-loop.py # proj_pres_ty-loop_local.py #
+i_day=2 # $(seq 0 4)
+var="u"
+prog_name=proj_uv_ty-loop.py # proj_pres_ty-loop_local.py #
 prog_work=${prog_name%".py"}.$SLURM_JOBID.py
-i_day=10 # $(seq 0 4)
 
 cp $prog_name $prog_work
+echo "running" $prog_work "for" $var", using" $SLURM_NNODES" nodes, "$nmpi" tasks, "$SLURM_CPUS_PER_TASK" cpu/task"
 
-srun -n $nmpi python $prog_work $i_day
-
+srun -n $nmpi python $prog_work $var $i_day
 echo "finished" `date`
 

@@ -7,7 +7,7 @@
 #SBTACH --threads-per-core=1
 #SBATCH --mem=118000        ### using nodes with 128Go
 #SBATCH --constraint=HSW24
-#SBATCH --time=04:00:00
+#SBATCH --time=02:30:00
 #SBATCH -e outjob_proj_p.e%j
 #SBATCH -o outjob_proj_p.o%j
 #SBATCH --exclusive
@@ -33,17 +33,16 @@ nmpi=$SLURM_NTASKS #$(( $SLURM_NTASKS + 1 )) # this is (dangerous) cheating
 # >>> client = Client(scheduler_file='~/scheduler.json')
 #scheduler_file="$HOME/working_on/processing/scheduler.json"
 
-echo "slurm job id" $SLURM_JOBID
-echo "now doing it" `date`, $SLURM_NNODES" nodes, "$nmpi" tasks, "$SLURM_CPUS_PER_TASK" cpu/task"
+echo "now doing it" `date` "JOB ID:" $SLURM_JOBID
 
+i_day=$(seq 3 4)
 prog_name=proj_pres_ty-loop.py # proj_pres_ty-loop_local.py #
 prog_work=${prog_name%".py"}.$SLURM_JOBID.py
-i_day=$(seq 3 4)
 
 cp $prog_name $prog_work
+echo "running" $prog_work", using" $SLURM_NNODES" nodes, "$nmpi" tasks, "$SLURM_CPUS_PER_TASK" cpu/task"
 
 srun -n $nmpi python $prog_work $i_day
-#srun -n $nmpi python ../testings/my_dask_script.py
 
 echo "finished" `date`
 
