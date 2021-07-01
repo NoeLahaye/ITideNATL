@@ -36,7 +36,7 @@ if True:
     from dask_mpi import initialize
     #initialize(nthreads=4, interface="ib0", memory_limit=21e9, 
     #initialize(nthreads=2, interface="ib0", memory_limit=11e9, 
-    initialize(nthreads=3, interface="ib0", memory_limit=17e9, \
+    initialize(nthreads=3, interface="ib0", memory_limit=17e9, 
             dashboard=True, local_directory=scratch)
     client=Client()
 else:
@@ -50,9 +50,9 @@ logging.info("Cluster should be connected -- dashboard at {}".format(client.dash
 ### define chunking and computational subdomains (y, t)
 chunks = {"t":1, "z":10, "y":100, "x":-1}
 chk_store = {"t":-1, "mode":1, "y":400, "x":-1} 
-nk_t = 3 # process nk_t instants at a time (must be a divider of 24 (nt_f))
+nk_t = 3 # process nk_t instants at a time (must be a divider of nt_f)
 sk_y = 200 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size / chunk store)
-restart = False # continue previously stopped job (y segments). False or None to start from beginning
+restart = False # continue previously stopped job (y segments). False or None starts from beginning creating a new zarr store
 
 ### read time ("day of simu in data") from sys.argv, or use here-defined value
 if len(sys.argv)>1: #N.B.: we can process several days
@@ -103,7 +103,6 @@ logging.info("finished setting up parameters, starting to load data")
 ds_g = xr.open_zarr(grid_mode_path)
 ds_g = ds_g.chunk({k:v for k,v in chunks_tg.items() if k in ds_g.dims})
 ds_g = ds_g.isel({d:region[d[0]] for d in ds_g.dims if d[0] in region})
-grid = Grid(ds_g, periodic=False)
 logging.info("opened static fields, reading from {}".format(grid_mode_path.name))
 
 ### open temperature, salinity and ssh
@@ -119,6 +118,9 @@ dssh = ut.open_one_var(ut.get_eNATL_path(v, i_days), chunks=chunks, varname=v)
 ds = ds.merge(dssh.reset_coords(drop=True), join="inner")
 ds = ds.isel({d:region[d[0]] for d in ds.dims if d[0] in region})
 logging.info("opened T, S and SSH data -- ellapsed time {:.1f} s".format(time.time()-tmes))
+
+### create xgcm grid
+grid = Grid(ds_g, periodic=False)
 
 ###  ---------------------------------------------------------------------  ###
 ###  -----------------  Start Computation  -------------------------------  ###
@@ -152,11 +154,13 @@ else:
                                                 mode="w", consolidated=True)
         logging.info("creating zarr took {:.2f} s".format(time.time()-tmes))
     logging.info("created zarr archives for storing modal projection")
+    restart = 0.
 
 ### loop over y and time (computation happens here)
 Nt = pmod.t.size
 ind_y = np.r_[np.arange(0, int(ds.y_c.size), sk_y), int(ds.y_c.size)]
-logging.info("starting loop over y and time, \n computing {0} segments of size {1} in time and {2} segments of size {3} in y".format(Nt//nk_t,nk_t,len(ind_y)-1, sk_y)
+logging.info("starting loop over y and time, \n computing {0} segments of size {1} \
+in time and {2} segments of size {3} in y".format(Nt//nk_t,nk_t,len(ind_y)-1, sk_y)
             )
 region = {d:slice(0,None) for d in pmod.dims}
 chk_x = max(1, chunks["x"]) # this is bypassing chunking in x if it has size -1 (for to_zarr with region)
@@ -215,3 +219,4 @@ for i,da in enumerate(sim_dates):
         fp.write("python script: {}\n".format(sys.argv[0]))
         fp.write("i_day {}, i_days {}, date {}\n".format(i_days[i],i_days,sim_dates))
         fp.write("nk_t {}, sk_y {}, working chunks {}, store chunks {}\n".format(nk_t, sk_y, chunks, chk_store))
+

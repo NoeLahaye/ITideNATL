@@ -53,7 +53,7 @@ chk_store = {"t":-1, "mode":1, "y":400, "x":-1}
 nk_t = 3 # process nk_t instants at a time (must be a divider of nt_f)
 sk_y = 200 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size)
 var = "u" # choose "u" or "v"
-restart = False # continue previously stopped job (y segments). False or None starts from beginning creating a new zarrstore 
+restart = False # continue previously stopped job (y segments). False or None starts from beginning creating a new zarr store 
 
 ### read time ("day of simu in data") from sys.argv, or use here-defined value
 if len(sys.argv)>1: #N.B.: we can process several days
@@ -81,13 +81,14 @@ log_file = "proj_{}_{}.log".format(var, "{}") #.format(i_day)
 ###  ---------------------- End of user-defined parameters ----------------  ###
 ###  ----------------------------------------------------------------------  ###
 
-nt_f = 24 # time instants per file
+nt_f = 24 # time instant per file
 assert nt_f%nk_t == 0 and sk_y%chunks["y"] == 0
 ### get date (day) and check for existing log files
 sim_dates = ut.get_date_from_iday(i_days)
 for da in sim_dates:
     if (log_dir/log_file.format(da)).exists():
         raise ValueError("{} already processed? found corresponding log file".format(da))
+        os._exit()
     logging.info("will process date {}".format(da))
 
 if region["x"].start > 0 and drop_land_x:
@@ -101,7 +102,7 @@ for di in ("x", "y"):
 logging.info("finished setting up parameters, starting to load data")
 
 ### Load static fields (grid, vmodes, pres...) and select region
-ds_g = xr.open_zarr(grid_uv_path) #, drop_variables=["phi", "norm", "e3t_m"])
+ds_g = xr.open_zarr(grid_uv_path) 
 ds_g = ds_g.chunk({k:v for k,v in chunks_tg.items() if k in ds_g.dims})
 ds_g = ds_g.isel({d:region[d[0]] for d in ds_g.dims if d[0] in region})
 ds_x = xr.open_zarr(grid_mode_path) # need this to get some info on the z_l grid
@@ -132,7 +133,7 @@ ds["sossheig"] = ds["sossheig"].chunk({dim_itp+"_r":chunks[dim_itp]})
 ###  -----------------  Start Computation  -------------------------------  ###
 ###  ---------------------------------------------------------------------  ###
 
-uvec = get_uv_mean_grid(ds.isel(t=slice(0,24)), ds_g, grid)
+uvec = get_uv_mean_grid(ds, ds_g, grid)
 amod = proj_puv(uvec, ds_g)
 # store chunks in terms of target dimensions
 chk_store = {d:chk_store[next(k for k in chk_store.keys() if d.startswith(k))] for d in amod.dims}
@@ -143,7 +144,7 @@ logging.info("created amod object, total size {:.1f} GB".format(amod.nbytes/1e9)
 if not (restart is None or restart is False):
     logging.info("continuing previous job at iy={}, will append in zarr archives".format(restart))
 else:
-    for id,da in enumerate(sim_dates): 
+    for i,da in enumerate(sim_dates): 
         from_files = ", ".join([str(grid_mode_path), str(grid_uv_path),
                                 str(ut.get_eNATL_path(uv_name, i_days[i])), 
                                str(ut.get_eNATL_path("sossheig", i_days[i]))
@@ -165,8 +166,11 @@ else:
 ### loop over y and time (computation happens here)
 Nt = amod.t.size
 dim_h = {k:next(d for d in amod.dims if d.startswith(k+"_")) for k in ["x", "y"]}
-ind_y = np.r_[np.arange(0, int(ds.dims[dim_h["y"]].size), sk_y), int(ds.dims[dim_h["y"]].size)]
-logging.info("starting loop over y and time, \n computing {0} segments of size {1} in time and {2} segments of size {3} in y".format(Nt//nk_t,nk_t,len(ind_y)-1, sk_y)
+ind_y = np.r_[ np.arange(0, int(ds.dims[dim_h["y"]].size), sk_y), 
+                int(ds.dims[dim_h["y"]].size)
+             ]
+logging.info("starting loop over y and time, \n computing {0} segments of size {1} \
+in time and {2} segments of size {3} in y".format(Nt//nk_t,nk_t,len(ind_y)-1, sk_y)
             )
 region = {d:slice(0,None) for d in amod.dims}
 chk_x = max(1, chunks["x"]) # this is bypassing chunking in x if it has size -1 (for to_zarr with region)
@@ -222,6 +226,6 @@ for i,da in enumerate(sim_dates):
     with open(log_dir/log_file.format(da), "w") as fp:
         fp.write("JOB ID: {}\n".format(os.getenv("SLURM_JOBID")))
         fp.write("python script: {}\n".format(sys.argv[0]))
-        fp.write("i_days {}, dates {}\n".format(i_days[i],sim_dates))
+        fp.write("i_day {}, i_days {}, date {}\n".format(i_days[i],i_days,sim_dates))
         fp.write("nk_t {}, sk_y {}, working chunks {}, store chunks {}\n".format(nk_t, sk_y, chunks, chk_store))
 
