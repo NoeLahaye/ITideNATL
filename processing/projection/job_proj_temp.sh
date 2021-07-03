@@ -32,6 +32,7 @@ if [ VAR == "p" ]; then
 else
     var=VAR
     prog_name=proj_uv_ty-loop.py
+fi
 prog_work=${prog_name%".py"}.$SLURM_JOBID.py
 
 cp $prog_name $prog_work
