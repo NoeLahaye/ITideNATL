@@ -2,12 +2,12 @@
 #SBATCH -J projuv		        ### job name
 #SBATCH --nodes=1
 ##SBATCH --ntasks=0
-#SBATCH --ntasks-per-node=8
-#SBATCH --cpus-per-task=3
+#SBATCH --ntasks-per-node=12
+#SBATCH --cpus-per-task=2
 #SBTACH --threads-per-core=1
 #SBATCH --mem=118000        ### using nodes with 128Go
 #SBATCH --constraint=HSW24
-#SBATCH --time=02:30:00
+#SBATCH --time=03:00:00
 #SBATCH -e outjob_proj_uv.e%j
 #SBATCH -o outjob_proj_uv.o%j
 #SBATCH --exclusive
@@ -36,7 +36,7 @@ nmpi=$SLURM_NTASKS #$(( $SLURM_NTASKS + 1 )) # this is (dangerous) cheating
 
 echo "now doing it" `date` "JOB ID:" $SLURM_JOBID
 
-i_day=2 # $(seq 0 4)
+i_day=5 # $(seq 0 4)
 var="u"
 prog_name=proj_uv_ty-loop.py # proj_pres_ty-loop_local.py #
 prog_work=${prog_name%".py"}.$SLURM_JOBID.py

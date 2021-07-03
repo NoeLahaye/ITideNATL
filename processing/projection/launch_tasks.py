@@ -1,11 +1,13 @@
+#!/usr/bin/python3
+
 from itertools import product
 import subprocess
 
-var = "u" # "u", "v" or "p"
-i_day = range(5,7)
-n_nodes = 1
-task_per_node = 8
-cpu_per_task = 3
+var = "v" # "u", "v" or "p"
+i_day = range(5,6)
+n_nodes = 2
+task_per_node = 12
+cpu_per_task = 2
 time = "auto" # str "hh:mm:ss" or float (hours) or "auto"
 
 file_in = "job_proj_temp.sh"
@@ -39,7 +41,7 @@ for va,it in product(var, i_day):
     filout = file_out.format(va,it)
     with open(filout, "w") as f:
         f.write(t_str)
-    res = subprocess.run(["echo", filout])
     print("generated script {} for variable {} and day {}".format(filout,va,it))
-    print("JOBID:", res.stdout)
+    res = subprocess.run(["sbatch", filout], stdout=subprocess.PIPE)
+    print("SBATCH:", res.stdout)
 
