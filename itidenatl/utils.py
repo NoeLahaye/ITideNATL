@@ -16,7 +16,9 @@ vmapping = dict(gridT="votemper",
                 gridS="vosaline",
                 gridU="vozocrtx",
                 gridV="vomecrty",
-                gridT2D="sossheig", # ignores all other variables for now
+                gridT-2D="sossheig", 
+                gridU-2D="sozocrtx",
+                gridV-2D="somecrty" # ignores all other variables for now
                 )
 
 # ---------------------------- paths -------------------------------------------
@@ -86,8 +88,8 @@ def get_eNATL_path(var=None, its=None, data_path=Path(raw_data_dir)):
     
     ### utilitary function to get file corresponding to one time index and one variable
     map_varname = {v:k for k,v in ut.vmapping.items()}
-    if map_varname["sossheig"]=="gridT2D":
-        map_varname["sossheig"] = "gridT-2D"
+    #if map_varname["sossheig"]=="gridT2D":
+        #map_varname["sossheig"] = "gridT-2D"
      
     if isinstance(its, list):
         res = []
