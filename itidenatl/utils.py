@@ -412,7 +412,8 @@ _offset = {"c":1., "l":.5, "r":1.5}
 # I could parse this from _orca_names_merged
 _zdims_in_dataset = {"vosaline":"deptht", "votemper":"deptht", "vosigmainsitu":"deptht",
                      "vozocrtx":"depthu", "vomecrty":"depthv", "vovecrtz":"depthw", 
-                     "sossheig":None}
+                     "sossheig":None, "sozocrtx":None, "somecrty":None
+                     }
 
 def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
     """ utilitary function to open datasets for one variable 
