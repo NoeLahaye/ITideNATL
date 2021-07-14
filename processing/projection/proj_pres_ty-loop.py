@@ -37,7 +37,7 @@ if True:
     #initialize(nthreads=4, interface="ib0", memory_limit=21e9, 
     #initialize(nthreads=2, interface="ib0", memory_limit=11e9, 
     initialize(nthreads=3, interface="ib0", memory_limit=17e9, 
-            dashboard=True, local_directory=scratch)
+            dashboard=False, local_directory=scratch)
     client=Client()
 else:
     client = Client(scheduler_file="scheduler.json")
@@ -70,7 +70,7 @@ worksha = Path("/work/CT1/ige2071/SHARED")
 
 data_path = Path("/work/CT1/hmg2840/lbrodeau/eNATL60")
 grid_mode_path = scratch/"eNATL60_grid_vmodes_proj_pres.zarr" 
-out_dir = worksha/"modal_proj/modam_pres"
+out_dir = worksha/"modal_proj/modamp_pres"
 out_file = "modamp_pres_global_{}.zarr" #"modamp_subdom_{}.zarr" #.format(date)
 log_dir = Path(os.getenv("HOME"))/"working_on/processing/log_proj_pres"
 log_file = "proj_pres_{}.log" #.format(i_day)
@@ -154,7 +154,7 @@ else:
                                                 mode="w", consolidated=True)
         logging.info("creating zarr took {:.2f} s".format(time.time()-tmes))
     logging.info("created zarr archives for storing modal projection")
-    restart = 0.
+    restart = 0
 
 ### loop over y and time (computation happens here)
 Nt = pmod.t.size
@@ -211,6 +211,8 @@ with performance_report(filename="perf-report_proj-pres_{}.html".format(tmp)):
         client.restart()
 
 logging.info("  ----  FINISHED  ----  ")
+ds.close()
+ds_g.close()
 
 ### create log file with some information
 for i,da in enumerate(sim_dates):

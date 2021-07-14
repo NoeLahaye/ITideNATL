@@ -36,8 +36,8 @@ nmpi=$SLURM_NTASKS #$(( $SLURM_NTASKS + 1 )) # this is (dangerous) cheating
 
 echo "now doing it" `date` "JOB ID:" $SLURM_JOBID
 
-i_day=5 # $(seq 0 4)
-var="u"
+i_day=36 # $(seq 0 4)
+var="v"
 prog_name=proj_uv_ty-loop.py # proj_pres_ty-loop_local.py #
 prog_work=${prog_name%".py"}.$SLURM_JOBID.py
 

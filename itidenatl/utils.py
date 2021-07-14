@@ -23,11 +23,12 @@ vmapping = dict(gridT="votemper",
 
 raw_data_dir = "/work/CT1/hmg2840/lbrodeau/eNATL60/"
 work_data_dir = "/work/CT1/ige2071/SHARED/"
-scratch_dir="/work/CT1/ige2071/SHARED/scratch/"
+scratch_dir = "/work/CT1/ige2071/SHARED/scratch/"
+dico_path = "/home/nlahaye/Coding/ITideNATL/itidenatl/dico_data_path.json"
 
 # ---------------------------- raw netcdf  -------------------------------------
 
-def get_list_files(data_path=Path(raw_data_dir), i_days=None):
+def make_list_files(data_path=Path(raw_data_dir), i_days=None):
     """ not sure this work if i_days is not None, it might take the order of files """
     subs = "eNATL60-BLBT02*-S/????????-????????/eNATL60-BLBT02*_1h_*_gridS_*.nc"
     list_files = list(data_path.glob(subs))
@@ -36,13 +37,28 @@ def get_list_files(data_path=Path(raw_data_dir), i_days=None):
         list_files = [list_files[i] for i in i_days]
     return list_files
 
-def get_dico_files(data_path=Path(raw_data_dir), i_days=None):
-    """ not sure this work if i_days is not None, it might take the order of files """
-    list_files = get_list_files(data_path=data_path, i_days=i_days)
-    dico_files = {k.name.rstrip(".nc")[-8:]:k for k in list_files} # dico day:path
+def get_list_files(dico_path=dico_path, i_days=None):
+    df = pd.read_json(dico_path).full_path.apply(lambda x: Path(x))
+    if i_days is None:
+        return df.to_list()
+    else:
+        if isinstance(i_days, int):
+            i_days = [i_days]
+        return df[i_days].to_list()
+
+def get_dico_files(dico_path=dico_path, i_days=None):
+    """ construct a dict with date:path for i_days """
+    df = pd.read_json(dico_path)
+    if i_days is not None:
+        df = df.iloc[i_days]
+    dico_files = { dd["date"]:Path(dd["full_path"]) 
+                        for ii,dd in df[["date","full_path"]].iterrows()
+                 }
+    #list_files = get_list_files(data_path=data_path, i_days=i_days)
+    #dico_files = {k.name.rstrip(".nc")[-8:]:k for k in list_files} # dico day:path
     return dico_files
 
-def get_date_from_iday(i_days=None, data_path=Path(raw_data_dir)):
+def get_date_from_iday(i_days=None, dico_path=dico_path): #data_path=Path(raw_data_dir)):
     """
     return all dates sorted if i_days is None, dates att day # i_days if i_days is in or list of int
     format yyymmdd
@@ -56,19 +72,24 @@ def get_date_from_iday(i_days=None, data_path=Path(raw_data_dir)):
     str or list of str with dates sorted
     """
     
-    list_files = get_list_files(data_path=(Path(raw_data_dir)))
-    dates = [k.name.rstrip(".nc")[-8:] for k in list_files] # list of dates (day)
-    dates.sort()
+    #list_files = get_list_files(data_path=(Path(raw_data_dir)))
+    #dates = [k.name.rstrip(".nc")[-8:] for k in list_files] # list of dates (day)
+    #dates.sort()
+    #if i_days is not None:
+        #if isinstance(i_days, int):
+            #dates = dates[i_days]
+        #elif isinstance(i_days, list):
+            #dates = [dates[i] for i in i_days]
+    #return dates
+    df = pd.read_json(dico_path).date
+    if i_days is None:
+        return df.to_list()
+    elif isinstance(i_days, list):
+        return df[i_days].to_list()
+    else:
+        return df[i_days]
 
-    if i_days is not None:
-        if isinstance(i_days, int):
-            dates = dates[i_days]
-        elif isinstance(i_days, list):
-            dates = [dates[i] for i in i_days]
-    return dates
-
-   
-def get_eNATL_path(var=None, its=None, data_path=Path(raw_data_dir)):
+def get_eNATL_path(var=None, its=None, dico_path=dico_path): #data_path=Path(raw_data_dir)):
     """ get path of eNATL raw data given a variable name and time instants (days) 
     Parameters
     __________
@@ -81,8 +102,10 @@ def get_eNATL_path(var=None, its=None, data_path=Path(raw_data_dir)):
         parent directory for all simulation data (default: utils.raw_data_dir)
     """
 
-    dates = get_date_from_iday(data_path=data_path)
-    dico_files = get_dico_files(data_path=data_path)
+    #dates = get_date_from_iday(data_path=data_path)
+    #dico_files = get_dico_files(data_path=data_path)
+    dates = get_date_from_iday(dico_path=dico_path)
+    dico_files = get_dico_files(dico_path=dico_path)
     
     ### utilitary function to get file corresponding to one time index and one variable
     map_varname = {v:k for k,v in ut.vmapping.items()}
