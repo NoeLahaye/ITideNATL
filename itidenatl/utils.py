@@ -16,7 +16,9 @@ vmapping = dict(gridT="votemper",
                 gridS="vosaline",
                 gridU="vozocrtx",
                 gridV="vomecrty",
-                gridT2D="sossheig", # ignores all other variables for now
+                gridT-2D="sossheig", 
+                gridU-2D="sozocrtx",
+                gridV-2D="somecrty" # ignores all other variables for now
                 )
 
 # ---------------------------- paths -------------------------------------------
@@ -109,8 +111,8 @@ def get_eNATL_path(var=None, its=None, dico_path=dico_path): #data_path=Path(raw
     
     ### utilitary function to get file corresponding to one time index and one variable
     map_varname = {v:k for k,v in ut.vmapping.items()}
-    if map_varname["sossheig"]=="gridT2D":
-        map_varname["sossheig"] = "gridT-2D"
+    #if map_varname["sossheig"]=="gridT2D":
+        #map_varname["sossheig"] = "gridT-2D"
      
     if isinstance(its, list):
         res = []
@@ -433,7 +435,8 @@ _offset = {"c":1., "l":.5, "r":1.5}
 # I could parse this from _orca_names_merged
 _zdims_in_dataset = {"vosaline":"deptht", "votemper":"deptht", "vosigmainsitu":"deptht",
                      "vozocrtx":"depthu", "vomecrty":"depthv", "vovecrtz":"depthw", 
-                     "sossheig":None}
+                     "sossheig":None, "sozocrtx":None, "somecrty":None
+                     }
 
 def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
     """ utilitary function to open datasets for one variable 
