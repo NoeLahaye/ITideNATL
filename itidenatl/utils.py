@@ -1,4 +1,3 @@
-
 import os, shutil
 from glob import glob
 from time import sleep
@@ -16,9 +15,9 @@ vmapping = dict(gridT="votemper",
                 gridS="vosaline",
                 gridU="vozocrtx",
                 gridV="vomecrty",
-                gridT-2D="sossheig", 
-                gridU-2D="sozocrtx",
-                gridV-2D="somecrty" # ignores all other variables for now
+                gridT2D="sossheig", 
+                gridU2D="sozocrtx",
+                gridV2D="somecrty" # ignores all other variables for now
                 )
 
 # ---------------------------- paths -------------------------------------------
@@ -121,14 +120,14 @@ def get_eNATL_path(var=None, its=None, dico_path=dico_path): #data_path=Path(raw
             if var is None:
                 name = ""
             else:
-                name = path.name.replace("gridS", map_varname[var])
+                name = path.name.replace("gridS", map_varname[var].replace("2D","-2D"))
             res.append(path.parent/name)
     elif isinstance(its, int):
         path = dico_files[dates[its]]
         if var is None:
             name = ""
         else:
-            name = path.name.replace("gridS", map_varname[var])
+            name = path.name.replace("gridS", map_varname[var].replace("2D","-2D"))
         res = path.parent/name
     else:
         res = []
@@ -137,7 +136,7 @@ def get_eNATL_path(var=None, its=None, dico_path=dico_path): #data_path=Path(raw
             if var is None:
                 name = ""
             else:
-                name = path.name.replace("gridS", map_varname[var])
+                name = path.name.replace("gridS", map_varname[var].replace("2D","-2D"))
             res.append(dico_files[da].parent/name)
     return res
         
