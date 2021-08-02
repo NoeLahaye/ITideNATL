@@ -4,8 +4,8 @@
 import subprocess
 #from time import sleep
 
-var = ["p", "u", "v"] # "u", "v", "p" or list of several
-i_day = range(55, 56+1) #[19, 20] #range(7,29)
+var = ["p", "u", "v"] # "p", "u", "v" or list of several
+i_day = range(70, 74+1) #[19, 20] #range(7,29)
 cluster_conf = {"p": {"NBODES":2, "TASKPNODE":8, "CPUPTASK":3},
                 "u": {"NBODES":1, "TASKPNODE":12, "CPUPTASK":2},
                 "v": {"NBODES":1, "TASKPNODE":12, "CPUPTASK":2}
