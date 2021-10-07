@@ -26,3 +26,4 @@ The temporal average is performed in three steps:
 
 ### post-processing
 
+ - `analysis` contains a few scripts for post processing, plotting, etc.
