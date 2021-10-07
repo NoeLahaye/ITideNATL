@@ -87,7 +87,7 @@ for da in sim_dates:
     if (log_dir/log_file.format(da)).exists():
         raise ValueError("{} already processed? found corresponding log file".format(da))
         os._exit()
-    logging.info("will process date {}".format(da))
+    logging.info("will process date {} (i_day {})".format(da,i_days))
 
 if region["x"].start > 0 and drop_land_x:
     logging.info("reverting drop_land_x to False because subdomain is not implemented")

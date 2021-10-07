@@ -23,7 +23,7 @@ eval "$(conda shell.bash hook)"
 conda activate /scratch/cnt0024/ige2071/nlahaye/conda/conda38
 nmpi=$SLURM_NTASKS 
 
-echo "now doing it" `date` "JOB ID:" $SLURM_JOBID
+echo "now doing it" `date` "JOB ID:" $SLURM_JOBID, "node(s):" $SLURM_JOB_NODELIST
 
 i_day=I_DAY 
 if [ VAR == "p" ]; then
@@ -38,6 +38,6 @@ prog_work=${prog_name%".py"}.$SLURM_JOBID.py
 cp $prog_name $prog_work
 echo "running" $prog_work "for VAR, using" $SLURM_NNODES" nodes, "$nmpi" tasks, "$SLURM_CPUS_PER_TASK" cpu/task"
 
-srun -n $nmpi python $prog_work $var $i_day
+srun --mpi=pmi2 -n $nmpi python $prog_work $var $i_day
 echo "finished" `date`
 

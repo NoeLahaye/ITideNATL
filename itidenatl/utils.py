@@ -113,7 +113,7 @@ def get_eNATL_path(var=None, its=None, dico_path=dico_path): #data_path=Path(raw
     #if map_varname["sossheig"]=="gridT2D":
         #map_varname["sossheig"] = "gridT-2D"
      
-    if isinstance(its, list):
+    if isinstance(its, (list, np.ndarray)):
         res = []
         for it in its:
             path = dico_files[dates[it]]
@@ -473,6 +473,12 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
     if verbose:
         print("opening", path, "with chunking", chk_op, "and kwargs", kwargs)
     if isinstance(path, list):
+        if "parallel" not in kwargs:
+            kwargs["parallel"] = True
+        if "concat_dim" not in kwargs:
+            kwargs["concat_dim"] = "time_counter"
+        if "combine" not in kwargs:
+            kwargs["combine"] = "nested"
         ds = xr.open_mfdataset(path, chunks=chk_op, **kwargs)
     else:
         ds = xr.open_dataset(path, chunks=chk_op, **kwargs)
