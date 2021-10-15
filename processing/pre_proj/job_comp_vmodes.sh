@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH -J vmodes	        ### job name
-#SBATCH --nodes=1
+#SBATCH --nodes=2
 ##SBATCH --ntasks=0
 #SBATCH --ntasks-per-node=7
 #SBATCH --cpus-per-task=4
 #SBTACH --threads-per-core=1
 ##SBATCH --mem=118000        ### using nodes with 128Go
-#SBATCH --constraint=BSD28
-#SBATCH --time=48:00:00
+#SBATCH --constraint=BDW28
+#SBATCH --time=24:00:00
 #SBATCH -e outjob_comp_vmodes.e%j
 #SBATCH -o outjob_comp_vmodes.o%j
 #SBATCH --exclusive

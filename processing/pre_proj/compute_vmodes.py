@@ -29,7 +29,7 @@ scratch = Path(os.getenv("SCRATCHDIR"))
 # method 1: dask-based script
 if True:
     from dask_mpi import initialize
-    initialize(nthreads=6, interface="ib0", memory_limit=10e9, 
+    initialize(nthreads=4, interface="ib0", memory_limit=6e9, 
             dashboard=False, local_directory=scratch)
     client=Client()
 else:
@@ -41,8 +41,9 @@ logging.info("Cluster should be connected -- dashboard at {}".format(client.dash
 ##########################  - - - PARAMETERS  - - -  ############################
 ### define paths
 scratch = Path(os.getenv("SCRATCHDIR"))
+works = Path("/work/CT1/ige2071/SHARED")
 grid_path = scratch #Path("/store/CT1/hmg2840/lbrodeau/eNATL60/eNATL60-I/")
-mean_path = scratch #Path("/work/CT1/ige2071/SHARED/mean")
+mean_path = scratch #works/"mean"
 
 avg_type = "30d" # "30d" or "global"
 avg_date = sys.argv[1] if len(sys.argv)>1 else "20090630" # will be ignored if avg_type is "global"
@@ -52,14 +53,16 @@ strat_fname = f"eNATL60_{avg_type}-mean_bvf{app}.zarr"
 
 zgrid_file = scratch/zgrid_fname
 strat_file = scratch/strat_fname
-out_file = scratch/f"eNATL60_{avg_type}-mean_vmodes{app}.zarr"
+out_file = works/f"vmodes/eNATL60_{avg_type}-mean_vmodes{app}.zarr"
+tmp_file = scratch/f"prov_vmodes{app}.zarr"
 
 ### processing parameters
 nmodes = 10
 out_chk = {"mode":1, "x_c":-1, "z_c": 30, "z_l":30}
-wrk_chk = {"x_c":600}
+wrk_chk = {"x_c":200}
 nseg_y = 200 # y-segment size: choose it a multiple or a divider of chunk size
 drop_land = True
+restart = 7 #False # False or jy
 
 #############################  - - -  PROCESSING  - - -  ########################
 dg = xr.open_zarr(zgrid_file).astype("float32")
@@ -74,6 +77,7 @@ chunks = {k:v[0] for k,v in ds.chunks.items()}
 ds
 
 ### create vmods object and zarr archive (delayed mode) 
+logging.info("creating Vmodes object and zarr store")
 vmods = Vmodes(ds, Grid(ds, periodic=False), nmodes=nmodes, free_surf=True, \
                 persist=False, chunks=out_chk)
 put_attrs = {"from_files":[str(zgrid_file), str(strat_file)], 
@@ -83,7 +87,8 @@ put_attrs = {"from_files":[str(zgrid_file), str(strat_file)],
              }
 put_attrs.update({f"process_params_{k}":eval(k) for k in ["nseg_y", "drop_land"]})
 vmods.ds.attrs = put_attrs
-vmods.store(out_file, coords=False, mode="w", compute=False, consolidated=True)
+if not restart:
+    vmods.store(out_file, coords=False, mode="w", compute=False, consolidated=True)
 
 ### Compute and store, looping over y-segments
 Ny = ds.y_c.size
@@ -93,18 +98,20 @@ def get_subds(ds):
     """ wrapper to get rid of land points (columns).
     Warning: this works only if x_c increment is 1 """
     lnd_pts = (ds.tmaskutil==0).sum().values
-    print("number of land points: {} ({:.1f}%)".format(lnd_pts, 
-        lnd_pts*100/ds.tmaskutil.size), end="; ")
+    logging.info("number of land points: {} ({:.1f}%)".format(lnd_pts, 
+        lnd_pts*100/ds.tmaskutil.size))
     index = ds.tmaskutil.max("y_c")
     index = index.where(index, drop=True).x_c - index.x_c[0] #
     index = slice(int(index[0]), int(index[-1])+1)
     sds = ds.isel(x_c=index)
     lnd_pts = (sds.tmaskutil==0).sum().values
-    print("after selection: {} ({:.1f}%)".format(lnd_pts, lnd_pts*100/sds.tmaskutil.size))
+    logging.info("after selection: {} ({:.1f}%)".format(lnd_pts, lnd_pts*100/sds.tmaskutil.size))
     return sds, index
 
 ### this is the loop
-for jy in range(0, 2*chunks["y_c"], nseg_y):
+logging.info("now starting loop, processing {} y-segments of size {}".format(Ny//nseg_y, nseg_y))
+jy_0 = restart*nseg_y if restart else 0
+for jy in range(jy_0, Ny, nseg_y):
     tmes = time.time()
     sliy = slice(jy, min(jy+nseg_y, Ny))
     if drop_land:
@@ -112,13 +119,16 @@ for jy in range(0, 2*chunks["y_c"], nseg_y):
     else:
         sds = ds.isel(y_c=sliy)
         slix = slice(0, None)
-        grid = Grid(sds, periodic=False)
-        region.update({"y_c":sliy, "x_c":slix})
-        vmods = Vmodes(sds, grid, modes=nmodes, free_surf=True, persist=False, 
-                chunks=out_chk)
-        vmods.ds = vmods.ds.where(vmods.ds.tmaskutil)
-        vmods.store(out_file, coords=False, mode="a", compute=True, region=region)
-        print("segment {0} done, size {1}, {2:.1f} min".format(jy, sds.x_c.size, 
-                                                            (time.time()-tmes)/60)
-             )
+    grid = Grid(sds, periodic=False)
+    region.update({"y_c":sliy, "x_c":slix})
+    vmods = Vmodes(sds, grid, modes=nmodes, free_surf=True, persist=False)#, chunks=out_chk)
+    vmods.ds = vmods.ds.where(vmods.ds.tmaskutil)
+    vmods.ds.reset_coords(drop=True).to_zarr(tmp_file, mode="w", compute=True)
+    #vmods.store(tmp_file, coords=False, mode="w", compute=True)
+    logging.info("computed and stored // now rechunking")
+    vmods.ds = xr.open_zarr(tmp_file).chunk(out_chk).unify_chunks()
+    vmods.store(out_file, coords=False, mode="a", compute=True, region=region)
+    logging.info("segment {0}-{1} done, x-size {2}, {3:.1f} min".format(jy, jy+nseg_y, 
+                                                    sds.x_c.size, (time.time()-tmes)/60)
+         )
 
