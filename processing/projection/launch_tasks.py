@@ -5,7 +5,8 @@ import subprocess
 #from time import sleep
 
 var = ["p","u","v"] # "p", "u", "v" or list of several
-i_day = range(125, 129+1) #[19, 20] #range(7,29)
+bis = "" # "" # ".bis" # ".ter"
+i_day = range(144, 149+1) #[19, 20] #range(7,29)
 cluster_conf = {"p": {"NBODES":2, "TASKPNODE":8, "CPUPTASK":3},
                 "u": {"NBODES":1, "TASKPNODE":12, "CPUPTASK":2},
                 "v": {"NBODES":1, "TASKPNODE":12, "CPUPTASK":2}
@@ -13,7 +14,7 @@ cluster_conf = {"p": {"NBODES":2, "TASKPNODE":8, "CPUPTASK":3},
 time = "auto" # str "hh:mm:ss" or float (hours) or "auto"
 do_chain = True  #run job one after another. False or True or "times"
 
-file_in = "job_proj_temp.sh"
+file_in = f"job_proj_temp.sh"
 file_out = "job_proj_{}_{}.sh"
 
 ### make sure we have lists
@@ -25,7 +26,7 @@ if isinstance(i_day, int):
 prev_id = None
 ### process job submission files
 for it in i_day:
-    dico = {"I_DAY":str(it)}
+    dico = {"I_DAY":str(it), "BIS":bis}
     if do_chain == "times":
         prev_id = None
     for va in var:
@@ -46,7 +47,8 @@ for it in i_day:
         filout = file_out.format(va,it)
         with open(filout, "w") as f:
             f.write(t_str)
-        print("generated script {} for variable {} and day {}".format(filout,va,it), end="; ")
+        print("generated script {} for variable {} and day {}; mode {}".format(filout,va,it,bis), 
+                end="; ")
         ### now launching job, possibly with dependency
         command = ["sbatch", "--parsable"]
         if prev_id is not None and do_chain:

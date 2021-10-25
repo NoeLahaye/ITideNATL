@@ -22,16 +22,18 @@ set -e
 eval "$(conda shell.bash hook)"
 conda activate /scratch/cnt0024/ige2071/nlahaye/conda/conda38
 nmpi=$SLURM_NTASKS 
+export OMPI_MCA_coll_tuned_bcast_algorithm=6
 
 echo "now doing it" `date` "JOB ID:" $SLURM_JOBID, "node(s):" $SLURM_JOB_NODELIST
 
 i_day=I_DAY 
+bis=BIS
 if [ VAR == "p" ]; then
     var=""
-    prog_name=proj_pres_ty-loop.py
+    prog_name=proj_pres_ty-loop${bis}.py
 else
     var=VAR
-    prog_name=proj_uv_ty-loop.py
+    prog_name=proj_uv_ty-loop${bis}.py
 fi
 prog_work=${prog_name%".py"}.$SLURM_JOBID.py
 
