@@ -18,7 +18,8 @@
 set -e
 
 # activate conda environment
-#module load /opt/software/alfred/spack-dev/modules/tools/linux-rhel7-x86_64/miniconda3/4.7.12.1-gcc-4.8.5
+module purge
+module load /opt/software/alfred/spack-dev/modules/tools/linux-rhel7-x86_64/miniconda3/4.7.12.1-gcc-4.8.5
 eval "$(conda shell.bash hook)"
 conda activate /scratch/cnt0024/ige2071/nlahaye/conda/conda38
 nmpi=$SLURM_NTASKS #$(( $SLURM_NTASKS + 1 )) # this is (dangerous) cheating
@@ -35,7 +36,7 @@ nmpi=$SLURM_NTASKS #$(( $SLURM_NTASKS + 1 )) # this is (dangerous) cheating
 
 echo "now doing it" `date` "JOB ID:" $SLURM_JOBID
 
-ladate="20090630"
+ladate="20090730"
 prog_name=compute_vmodes.py # proj_pres_ty-loop_local.py #
 prog_work=${prog_name%".py"}.$SLURM_JOBID.py
 
