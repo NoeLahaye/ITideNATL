@@ -1,7 +1,7 @@
 # Internal Tide analysis in NEMO run eNATL60
 
 This repo contains python scripts and notebooks for processing and analysing outputs from the eNATL60 simulation. 
-This analysis involves a vertical mode decomposition of the dynamics, and heavily uses xarray/dask.
+This analysis involves a vertical mode decomposition of the dynamics, and heavily uses xarray/dask and xgcm.
 
 requirements: [xorca](https://github.com/willirath/xorca) library + installation of "itidenatl" library (running `python setup.py instal`)
 
