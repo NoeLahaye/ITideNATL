@@ -1,7 +1,7 @@
-
-import os, sys, shutil
+import os, shutil
 from glob import glob
 from time import sleep
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -15,17 +15,131 @@ vmapping = dict(gridT="votemper",
                 gridS="vosaline",
                 gridU="vozocrtx",
                 gridV="vomecrty",
-                gridT2D="sossheig", # ignores all other variables for now
+                gridT2D="sossheig", 
+                gridU2D="sozocrtx",
+                gridV2D="somecrty" # ignores all other variables for now
                 )
 
 # ---------------------------- paths -------------------------------------------
 
 raw_data_dir = "/work/CT1/hmg2840/lbrodeau/eNATL60/"
 work_data_dir = "/work/CT1/ige2071/SHARED/"
-scratch_dir="/work/CT1/ige2071/SHARED/scratch/"
-
+scratch_dir = "/work/CT1/ige2071/SHARED/scratch/"
+dico_path = "/home/nlahaye/Coding/ITideNATL/itidenatl/dico_data_path.json"
 
 # ---------------------------- raw netcdf  -------------------------------------
+
+def make_list_files(data_path=Path(raw_data_dir), i_days=None):
+    """ not sure this work if i_days is not None, it might take the order of files """
+    subs = "eNATL60-BLBT02*-S/????????-????????/eNATL60-BLBT02*_1h_*_gridS_*.nc"
+    list_files = list(data_path.glob(subs))
+    if i_days is not None:
+        i_days = list(i_days)
+        list_files = [list_files[i] for i in i_days]
+    return list_files
+
+def get_list_files(dico_path=dico_path, i_days=None):
+    df = pd.read_json(dico_path).full_path.apply(lambda x: Path(x))
+    if i_days is None:
+        return df.to_list()
+    else:
+        if isinstance(i_days, int):
+            i_days = [i_days]
+        return df[i_days].to_list()
+
+def get_dico_files(dico_path=dico_path, i_days=None):
+    """ construct a dict with date:path for i_days """
+    df = pd.read_json(dico_path)
+    if i_days is not None:
+        df = df.iloc[i_days]
+    dico_files = { dd["date"]:Path(dd["full_path"]) 
+                        for ii,dd in df[["date","full_path"]].iterrows()
+                 }
+    #list_files = get_list_files(data_path=data_path, i_days=i_days)
+    #dico_files = {k.name.rstrip(".nc")[-8:]:k for k in list_files} # dico day:path
+    return dico_files
+
+def get_date_from_iday(i_days=None, dico_path=dico_path): #data_path=Path(raw_data_dir)):
+    """
+    return all dates sorted if i_days is None, dates att day # i_days if i_days is in or list of int
+    format yyymmdd
+
+    Parameters:
+    ___________
+    i_days: int or list (optional)
+
+    Returns:
+    _______
+    str or list of str with dates sorted
+    """
+    
+    #list_files = get_list_files(data_path=(Path(raw_data_dir)))
+    #dates = [k.name.rstrip(".nc")[-8:] for k in list_files] # list of dates (day)
+    #dates.sort()
+    #if i_days is not None:
+        #if isinstance(i_days, int):
+            #dates = dates[i_days]
+        #elif isinstance(i_days, list):
+            #dates = [dates[i] for i in i_days]
+    #return dates
+    df = pd.read_json(dico_path).date
+    if i_days is None:
+        return df.to_list()
+    elif isinstance(i_days, list):
+        return df[i_days].to_list()
+    else:
+        return df[i_days]
+
+def get_eNATL_path(var=None, its=None, dico_path=dico_path): #data_path=Path(raw_data_dir)):
+    """ get path of eNATL raw data given a variable name and time instants (days) 
+    Parameters
+    __________
+    var: str (optional)
+        variable name (NEMO OPA name)
+        return parent directories if not provided
+    it: int or list of int (optional)
+        date (day of simulation). Returns all available date if not provided
+    data_path: str or pathlib.Path object (optional)
+        parent directory for all simulation data (default: utils.raw_data_dir)
+    """
+
+    #dates = get_date_from_iday(data_path=data_path)
+    #dico_files = get_dico_files(data_path=data_path)
+    dates = get_date_from_iday(dico_path=dico_path)
+    dico_files = get_dico_files(dico_path=dico_path)
+    
+    ### utilitary function to get file corresponding to one time index and one variable
+    map_varname = {v:k for k,v in ut.vmapping.items()}
+    #if map_varname["sossheig"]=="gridT2D":
+        #map_varname["sossheig"] = "gridT-2D"
+     
+    if isinstance(its, (list, np.ndarray)):
+        res = []
+        for it in its:
+            path = dico_files[dates[it]]
+            if var is None:
+                name = ""
+            else:
+                name = path.name.replace("gridS", map_varname[var].replace("2D","-2D"))
+            res.append(path.parent/name)
+    elif isinstance(its, int):
+        path = dico_files[dates[its]]
+        if var is None:
+            name = ""
+        else:
+            name = path.name.replace("gridS", map_varname[var].replace("2D","-2D"))
+        res = path.parent/name
+    else:
+        res = []
+        for da in dates:
+            path = dico_files[da]
+            if var is None:
+                name = ""
+            else:
+                name = path.name.replace("gridS", map_varname[var].replace("2D","-2D"))
+            res.append(dico_files[da].parent/name)
+    return res
+        
 
 def _get_raw_files(run, variable):
     """ Return raw netcdf files
@@ -278,3 +392,151 @@ def _removekey(d, key):
     r = dict(d)
     del r[key]
     return r
+
+
+# ------------------------- various routines related to routines, options, etc. ------------- #
+_name = {"et":"e3t", "ew":"e3w", "ssh":"sossheig", "mask":"tmask",
+        "zt":"depth_c", "zw":"depth_l"}
+
+def _parse_name_dict(dico, special=None):
+    """ wrapper of _parse_inp_dict to use _name dict as default"""
+    return _parse_inp_dict(dico, _name, special)
+
+def _parse_inp_dict(dico, defo, special=None):
+    """ parse input dictionary containg names for updating the default one """
+    if dico is None:
+        return defo.copy()
+    else:
+        newdic = defo.copy()
+        if isinstance(dico, dict):
+            newdic.update(dico)
+        elif isinstance(dico, str):
+            newdic[special] = dico
+        else:
+            raise ValueError('unable to parse "name" argument')
+        return newdic
+
+def _da_or_ds(ds, nam=None):
+    """ return dataarray from dataset or dataarray """
+    if isinstance(ds, xr.Dataset):
+        return ds[nam]
+    else:
+        return ds
+    
+# ------------------------ xarray / xorca related ------------------------------- #
+
+from xorca import orca_names
+
+_orca_names_merged = {**orca_names.orca_coords, **orca_names.orca_variables}
+# update a la mano
+_orca_names_merged["vosigmainsitu"] = _orca_names_merged["votemper"]
+_offset = {"c":1., "l":.5, "r":1.5}
+# I could parse this from _orca_names_merged
+_zdims_in_dataset = {"vosaline":"deptht", "votemper":"deptht", "vosigmainsitu":"deptht",
+                     "vozocrtx":"depthu", "vomecrty":"depthv", "vovecrtz":"depthw", 
+                     "sossheig":None, "sozocrtx":None, "somecrty":None
+                     }
+
+def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
+    """ utilitary function to open datasets for one variable 
+    and return dataset with fixed dimension names and minimal coordinates 
+    Works for 3D (t,y,x) or 4D (t,z,y,x) variable. Not check for others 
+    
+    Parameters
+    __________
+    TODO
+
+    """
+    ### infer targetted variable name from file names if not provided
+    if not varname:
+        path_ref = path[0] if isinstance(path, list) else path
+        varname = next(v for v in str(path_ref).split("_") if len(v)==8 and v.startswith("vo"))
+    else:
+        if isinstance(path, list): # retain only variable files
+            n_path = [v for v in path if varname in str(v)]
+            path = path if len(n_path)==0 else n_path
+            
+    ### update chunk dict
+    chunk_after = kwargs.get("chunk_after", False)
+    if isinstance(chunks, dict):
+        chks = chunks.copy()
+        if _zdims_in_dataset[varname]:
+            chks[_zdims_in_dataset[varname]] = chks.pop("z")
+        else:
+            chks.pop("z")
+        chks["time_counter"] = chks.pop("t")
+    else:
+        chks = chunks
+        
+    ### open dataset
+    chk_op = "auto" if chunk_after else chks
+    if verbose:
+        print("opening", path, "with chunking", chk_op, "and kwargs", kwargs)
+    if isinstance(path, list):
+        if "parallel" not in kwargs:
+            kwargs["parallel"] = True
+        if "concat_dim" not in kwargs:
+            kwargs["concat_dim"] = "time_counter"
+        if "combine" not in kwargs:
+            kwargs["combine"] = "nested"
+        ds = xr.open_mfdataset(path, chunks=chk_op, **kwargs)
+    else:
+        ds = xr.open_dataset(path, chunks=chk_op, **kwargs)
+    if chunk_after:
+        ds = ds.chunk(chks)
+        
+    ### get rid of coordinates and meta variables
+    if "axis_nbounds" in ds.dims:
+        ds = ds.drop_dims("axis_nbounds")
+    ds = ds.reset_coords(drop=True)
+    ### check that we have a single variable with correct name in the end
+    if len(ds.data_vars)>1:
+        coords = [v for v in ds.data_vars.keys() if v != varname]
+        ds = ds.set_coords(coords)
+    nam = next(k for k in ds.data_vars.keys())
+    assert nam==varname
+    
+    ### proceed to dimension renaming
+    dims = []
+    dims_tg = _orca_names_merged[nam]["dims"] # order "t","z","y","x"
+    #if "time_counter" in ds.dims:
+    #    ds = ds.rename({"time_counter":"t"})
+    dims = ["time_counter",] + next(([d] for d in ds.dims if d.startswith("dep")), []) + ["y", "x"]
+    ds = ds.rename({d:dims_tg[i] for i,d in enumerate(dims)})#, zdim:dims_tg[1], "y":dims_tg[2], "x":dims_tg[3]})
+    if len(dims)==4:
+        ds[dims_tg[1]] = np.arange(ds[dims_tg[1]].size, dtype="float32") + _offset[dims_tg[1][-1]]
+        ds = ds.assign_coords({di:np.arange(ds[di].size, dtype="float32") + _offset[di[-1]] 
+                               for di in dims_tg[2:]})
+    else:
+        ds = ds.assign_coords({di:np.arange(ds[di].size, dtype="float32") + _offset[di[-1]] 
+                               for di in dims_tg[1:]})
+    # add axis attributes to dimension coordinates for xgcm
+    for dim in [d for d in dims_tg if d[0] in "xyz"]:
+        ds[dim].attrs["axis"] = ds[dim].attrs.get("axis", dim[0].upper())
+        if dim.endswith("l"):
+            ds[dim].attrs["c_grid_axis_shift"] = ds[dim].attrs.get("c_grid_axis_shift",-0.5)
+        elif dim.endswith("r"):
+            ds[dim].attrs["c_grid_axis_shift"] = ds[dim].attrs.get("c_grid_axis_shift",+0.5)
+    
+    return ds
+
+def open_one_coord(path, varname, chunks=None, verbose=False):
+    """ get one coordinate avriable from, e.g. mesh mask file
+    works only for one single file to read from. Does not update coords.
+    returns dataset """
+
+    ds = xr.open_dataset(path, chunks=chunks)
+    dico = _orca_names_merged.get(varname)#, default=orca_names.orca_variables[varname])
+    d_tg = dico["dims"]
+    if "old_names" in dico:
+        nam = next(d for d in dico["old_names"] if d in ds)
+    else:
+        nam = varname
+    if verbose:
+        print("fetching", nam, "from dataset")
+
+    dimap = {k[0]:k for k in d_tg}
+    res = ds.get([nam]).rename(dimap).squeeze()
+    res[nam] *= dico.get("force_sign", 1)
+
+    return res.rename({nam:varname})
