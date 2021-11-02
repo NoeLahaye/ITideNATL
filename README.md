@@ -12,6 +12,7 @@ requirements: [xorca](https://github.com/willirath/xorca) library + installation
 * **preprocessing/**: computing mean fields: temperature, salinity, SSH. (prior to mean stratification and vertical modes computation)
 * **processing/**: compute mean stratification, mean grid and vertical modes + project variables on vertical modes
 * **postpro_ana/**: analysis of modally projected variables
+* **misc/**: side stuff (e.g. plotting topo, dealing with path, etc.)
 
 Further information is given in each sub-directory (search for `README_*.md` files)
 
