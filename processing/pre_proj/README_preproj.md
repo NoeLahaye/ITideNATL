@@ -10,8 +10,8 @@ inputs: time-averaged temperature, salinity and SSH. There is an assumption here
 3. **Compute vertical modes** with `compute_vmodes.py`(or the corresponding notebook). Inputs: vertical grid (and metrics) and stratification. Output: zarr store containing vertical modes ($\phi, \phi'$ and $c$). Timing: around 11 h on 2 nodes.
 
 ### Further processing for field projection
-1. **re-chunk** (and gather necessary fields from the mean grid) using `make_projpres_gridmode_dataset.ipynb`
-2. **interpolate on u-v points** (with adequate chunking) using `interp_vmode_phi_uv.ipynb`
+1. **re-chunk** (and gather necessary fields from the mean grid) using `make_projpres_gridmode_dataset.ipynb`. Note that this could be avoided if the correct chunking is used when processing these dataset (I did not check whether it is possible or not)
+2. **interpolate on u-v points** (with adequate chunking) using `interp_vmode_phi_uv.ipynb`: mandatory to project horizontal velocities.
 
 ### Size of datasets
 * `vmodes_10.zarr`: 226 GB
