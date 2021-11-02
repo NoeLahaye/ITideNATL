@@ -36,7 +36,7 @@ if True:
     from dask_mpi import initialize
     #initialize(nthreads=4, interface="ib0", memory_limit=21e9, 
     #initialize(nthreads=3, interface="ib0", memory_limit=17e9, 
-    initialize(nthreads=4, interface="ib0", memory_limit=12e9, 
+    initialize(nthreads=2, interface="ib0", memory_limit=12e9, 
             dashboard=False, local_directory=scratch)
     client=Client()
 else:
@@ -56,7 +56,7 @@ if len(sys.argv)>1:
     var = sys.argv[1]
 else:
     var = "u" # choose "u" or "v"
-restart = 0 #False # continue previously stopped job (y segments). False or None starts from beginning creating a new zarr store 
+restart = False # continue previously stopped job (y segments). False or None starts from beginning creating a new zarr store 
 
 ### read time ("day of simu in data") from sys.argv, or use here-defined value
 if len(sys.argv)>2: #N.B.: we can process several days
