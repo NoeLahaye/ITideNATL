@@ -1,4 +1,4 @@
-### preprocessing
+## preprocessing
 
 The temporal average is performed in three steps:
 
