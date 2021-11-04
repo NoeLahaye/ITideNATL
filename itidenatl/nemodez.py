@@ -504,7 +504,7 @@ def get_vmodes(ds, nmodes=_nmod_def, **kwargs):
               .rename('phiw')
               .rename({'s_stack': zl})
             #  .assign_coords(z_w=zf)
-             ) / norm**.5
+             ) / (norm/norm_tg)**.5
     norm = norm_tg # norm = int(phi^2 dz)
     # merge data into a single dataset
     dm = xr.merge([c.rename("c"), phi.rename("phi"), 
