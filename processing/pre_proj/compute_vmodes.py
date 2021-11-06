@@ -108,8 +108,9 @@ def get_subds(ds):
     return sds, index
 
 ### this is the loop
-logging.info("now starting loop, processing {} y-segments of size {}".format(Ny//nseg_y, nseg_y))
+logging.info("now starting loop, processing {} y-segments of size {}".format((Ny-1)//nseg_y+1, nseg_y))
 jy_0 = restart*nseg_y if restart else 0
+tstart = time.time()
 for jy in range(jy_0, Ny, nseg_y):
     tmes = time.time()
     sliy = slice(jy, min(jy+nseg_y, Ny))
@@ -122,12 +123,9 @@ for jy in range(jy_0, Ny, nseg_y):
     region.update({"y_c":sliy, "x_c":slix})
     vmods = Vmodes(sds, grid, modes=nmodes, free_surf=True, persist=False, chunks=out_chk)
     vmods.ds = vmods.ds.where(vmods.ds.tmaskutil)
-    #vmods.ds.reset_coords(drop=True).to_zarr(tmp_file, mode="w", compute=True)
-    #vmods.store(tmp_file, coords=False, mode="w", compute=True)
-    #logging.info("computed and stored // now rechunking")
-    #vmods.ds = xr.open_zarr(tmp_file).chunk(out_chk).unify_chunks()
     vmods.store(out_file, coords=False, mode="a", compute=True, region=region)
     logging.info("segment {0}-{1} done, x-size {2}, {3:.1f} min".format(jy, jy+nseg_y, 
                                                     sds.x_c.size, (time.time()-tmes)/60)
          )
+logging.info("computing vmodes finished, took {:.1f} hours".format((time.time()-tstart)/3600))
 
