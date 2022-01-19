@@ -255,3 +255,14 @@ def corr_zbreath(ds, xgrid, hbot=None, ssh=None, which=None, name=None):
     delz = get_del_zlev(ds, which=which, hbot=hbot, ssh=ssh, name=name)
     dfdz = xgrid.interp(xgrid.diff(data, "Z", boundary="extend")/e3z, "Z", boundary="extend")
     return data + dfdz * delz # NB: dfdz=-dfdz because z sorted by increasing depth
+
+def diff_on_grid(da, dim, grid):
+    """ compute derivative on the same grid
+    dim must be the first letter of the dimension name (case sensitive) and the xgcm.Grid axis name (case insensitive)
+    uses xgcm.Grid.derivative, assuming correct metrics are contained in grid object """
+    diname = _get_dim_from_d(da, dim)
+    chk = da.chunks[da.dims.index(diname)][0]
+    dim = dim.upper()
+    res = grid.interp(da, dim, boundary="extrapolate")
+    return grid.derivative(res, dim, boundary="extrapolate").chunk({diname:chk})
+
