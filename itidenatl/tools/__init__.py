@@ -1,1 +1,1 @@
-__all__ = ["compute", "dataio", "files", "misc.py", "plot", "utils"]
+__all__ = ["compute", "dataio", "files", "misc", "plot", "utils"]

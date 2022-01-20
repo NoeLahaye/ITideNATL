@@ -1,1 +1,1 @@
-__all__ = ["gridop", "eos", "nemodez", "vars", "tools", "utils"]
+__all__ = ["gridop", "eos", "nemodez", "vars", "tools/", "utils"]

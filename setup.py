@@ -6,7 +6,8 @@ from distutils.core import setup
 
 setup(name='itidenatl',
       description='eNATL60 tidal analysis',
-      url='https://github.com/NoeLahaye',
-      packages=['itidenatl'])
+      url='https://github.com/NoeLahaye/ITideNATL',
+      packages=['itidenatl', 'itidenatl.tools'],
+      )
 
 #      install_requires=INSTALL_REQUIRES,
