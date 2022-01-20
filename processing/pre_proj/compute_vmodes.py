@@ -61,7 +61,7 @@ out_chk = {"mode":1, "x_c":-1, "z_c": 30, "z_l":30}
 wrk_chk = {"x_c":400}
 nseg_y = 100 # y-segment size: choose it a multiple or a divider of chunk size
 drop_land = True
-restart = False # False or jy/nseg_y
+restart = False # or jy/nseg_y
 
 #############################  - - -  PROCESSING  - - -  ########################
 dg = xr.open_zarr(zgrid_file).astype("float32")

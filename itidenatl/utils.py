@@ -470,6 +470,7 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
         
     ### open dataset
     chk_op = "auto" if chunk_after else chks
+    kwargs["engine"] = kwargs.get("engine", "h5netcdf")
     if verbose:
         print("opening", path, "with chunking", chk_op, "and kwargs", kwargs)
     if isinstance(path, list):
@@ -520,12 +521,13 @@ def open_one_var(path, chunks="auto", varname=None, verbose=False, **kwargs):
     
     return ds
 
-def open_one_coord(path, varname, chunks=None, verbose=False):
-    """ get one coordinate avriable from, e.g. mesh mask file
+def open_one_coord(path, varname, chunks=None, verbose=False, **kwargs):
+    """ get one coordinate variable from, e.g. mesh mask file
     works only for one single file to read from. Does not update coords.
     returns dataset """
+    engine = kwargs.pop("engine", "h5netcdf")
 
-    ds = xr.open_dataset(path, chunks=chunks)
+    ds = xr.open_dataset(path, chunks=chunks, engine=engine)
     dico = _orca_names_merged.get(varname)#, default=orca_names.orca_variables[varname])
     d_tg = dico["dims"]
     if "old_names" in dico:

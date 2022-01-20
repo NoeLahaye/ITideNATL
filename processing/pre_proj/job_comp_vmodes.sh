@@ -7,7 +7,7 @@
 #SBTACH --threads-per-core=1
 ##SBATCH --mem=118000        ### using nodes with 128Go
 #SBATCH --constraint=BDW28
-#SBATCH --time=24:00:00
+#SBATCH --time=18:00:00
 #SBATCH -e outjob_comp_vmodes.e%j
 #SBATCH -o outjob_comp_vmodes.o%j
 #SBATCH --exclusive
@@ -36,7 +36,7 @@ nmpi=$SLURM_NTASKS #$(( $SLURM_NTASKS + 1 )) # this is (dangerous) cheating
 
 echo "now doing it" `date` "JOB ID:" $SLURM_JOBID
 
-ladate="20091227"
+ladate="20091028"
 prog_name=compute_vmodes.py # proj_pres_ty-loop_local.py #
 prog_work=${prog_name%".py"}.$SLURM_JOBID.py
 
