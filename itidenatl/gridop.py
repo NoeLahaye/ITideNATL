@@ -257,13 +257,70 @@ def corr_zbreath(ds, xgrid, hbot=None, ssh=None, which=None, name=None):
     dfdz = xgrid.interp(xgrid.diff(data, "Z", boundary="extend")/e3z, "Z", boundary="extend")
     return data + dfdz * delz # NB: dfdz=-dfdz because z sorted by increasing depth
 
-def diff_on_grid(da, dim, grid):
+### derivative routines
+def diff_on_grid(da, dim, grid, uptopo=False, diff_before_interp=False):
+    """ compute derivative on the same grid
+    Firs interpolate the function at mid points (unweighted average), then compute derivative back to initial points
+    uses xgcm.Grid.derivative, assuming correct metrics are contained in grid object
+
+    Parameters:
+    ___________
+    da: xarray.DataArray
+        data to differentiate
+    dim: str
+        first letter of the dimension name (case sensitive) and the xgcm.Grid axis name (case insensitive)
+    grid: xgcm.Grid object
+        must contain correct grid metrics, otherwise you must divide the result by the grid increment
+    uptopo: Bool or str, optional (default: False)
+        wether differentiation is computed "upwind" near masked values, in which case a mask must be provded.
+        If str, will use the mask named uptopo in da coordinates. If True, uses "tmask".
+    diff_before_interp: bool, optional (default: False)
+        Alternative where derivative is first computed at mid points, then interpolated backon initial points
+
+    Returns:
+    ________
+        xarray.DataArray containing the derivated field
+    """
+    if diff_before_interp:
+        dif = diff_on_grid_diffbeforeinterp(da, dim, grid, uptopo)
+    else:
+        diname = ut._get_dim_from_d(da, dim)
+        chk = da.chunks
+        if chk:
+            chk = chk[da.dims.index(diname)][0]
+        dim = dim.upper()
+        if uptopo:
+            mask = uptopo
+            tmask = da[mask] if isinstance(mask, str) else da["tmask"]
+            da = da.where(tmask, 0)
+        res = grid.interp(da, dim, boundary="extrapolate")
+        if uptopo:
+            res = res * (1 + (grid.interp(tmask, dim, boundary="extrapolate")!=1))
+        dif = grid.derivative(res, dim, boundary="extrapolate")
+        if chk:
+            dif = dif.chunk({diname:chk})
+        if uptopo:
+            dif = dif.where(tmask)
+    return dif
+
+def diff_on_grid_diffbeforeinterp(da, dim, grid, uptopo=False):
     """ compute derivative on the same grid
     dim must be the first letter of the dimension name (case sensitive) and the xgcm.Grid axis name (case insensitive)
     uses xgcm.Grid.derivative, assuming correct metrics are contained in grid object """
     diname = ut._get_dim_from_d(da, dim)
-    chk = da.chunks[da.dims.index(diname)][0]
+    chk = da.chunks
+    if chk:
+        chk = chk[da.dims.index(diname)][0]
     dim = dim.upper()
-    res = grid.interp(da, dim, boundary="extrapolate")
-    return grid.derivative(res, dim, boundary="extrapolate").chunk({diname:chk})
+    dif = grid.derivative(da, dim, boundary="extrapolate")
+    if mask:
+        tmask = da[mask] if isinstance(mask, str) else da["tmask"]
+        umask = grid.interp(tmask, dim, boundary="extrapolate")
+        dif = dif.where(umask==1, 0)
+    res = grid.interp(dif, dim, boundary="extrapolate")
+    if mask:
+        res = res * (1 + (grid.interp(umask, dim, boundary="extrapolate")!=1)).where(tmask)
+    if chk:
+        res = res.chunk({diname:chk})
+    return res
 
