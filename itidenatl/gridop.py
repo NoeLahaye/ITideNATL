@@ -3,11 +3,12 @@ grid operations for the NEMO grid using xarray and xgcm capabilities through xor
 At this stage, most routines are for vertical grid operations, and in particular dealing with variable volume 
 configuration (grid breathing) due to SSH, with z-level formulation (partial step and full step -- not checked)
 """
-import xarray as xr
+#import xarray as xr
 
 from xorca.orca_names import z_dims
 
 from .utils import _parse_name_dict, _da_or_ds
+from .tools import misc as ut
 
 def _get_z_dim(data):
     return next(iter(dim for dim in z_dims if dim in data.dims), None)
@@ -260,7 +261,7 @@ def diff_on_grid(da, dim, grid):
     """ compute derivative on the same grid
     dim must be the first letter of the dimension name (case sensitive) and the xgcm.Grid axis name (case insensitive)
     uses xgcm.Grid.derivative, assuming correct metrics are contained in grid object """
-    diname = _get_dim_from_d(da, dim)
+    diname = ut._get_dim_from_d(da, dim)
     chk = da.chunks[da.dims.index(diname)][0]
     dim = dim.upper()
     res = grid.interp(da, dim, boundary="extrapolate")
