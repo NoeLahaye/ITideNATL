@@ -1,5 +1,9 @@
 import xarray as xr
 
+### Miscellaneous
+def _is_complex(da):
+    return da.dtype.name.startswith("complex")
+
 ### for custom_distribute
 def _print_dic(dico, doprint=True):
     str_prt = ", ".join([f"{k}: {v}" for k,v in dico.items()])
@@ -26,3 +30,18 @@ def _get_dim_from_d(ds_or_da, dim):
     diname = next(d for d in ds_or_da.dims if d[0]==dim)
     return diname
 
+def _find_common_dims(ds_or_dalist, what="data_vars"):
+    """ ds_or_dalist: xarray.Dataset or list(xarray.DataArray) """
+    if isinstance(ds_or_dalist, xr.Dataset):
+        if what == "coords":
+            data = ds_or_dalist.coords.values()
+        elif what == "data_vars":
+            data = ds_or_dalist.data_vars.values()
+        else:
+            raise ValueError("unrecognized option 'what' for the Dataset")
+    elif isinstance(ds_or_dalist, list):
+        data = ds_or_dalist
+    else:
+        raise ValueError("ds_or_dalist must be a xarray.Dataset or list of xarray.DataArray")
+                            
+    return list(set.intersection(*map(set, [v.dims for v in data])))

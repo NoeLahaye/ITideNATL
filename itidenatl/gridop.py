@@ -3,15 +3,20 @@ grid operations for the NEMO grid using xarray and xgcm capabilities through xor
 At this stage, most routines are for vertical grid operations, and in particular dealing with variable volume 
 configuration (grid breathing) due to SSH, with z-level formulation (partial step and full step -- not checked)
 """
-#import xarray as xr
+import xarray as xr
 
 from xorca.orca_names import z_dims
 
 from .utils import _parse_name_dict, _da_or_ds
 from .tools import misc as ut
 
+# grid related utilitaries. see also in tools.misc.py
 def _get_z_dim(data):
     return next(iter(dim for dim in z_dims if dim in data.dims), None)
+
+def _has_metrics(xgrid):
+    """ check if xgcm.Grid object has metrics. Preliminary version """
+    return bool(len(xgrid._metrics))
 
 def get_hbot(ds, name=None, overwrite=False):
     """ compute depth (positive) of bottom, "hbot", from grid metrics (interval) and mask 
@@ -325,3 +330,25 @@ def diff_on_grid_diffbeforeinterp(da, dim, grid, upmask=False):
         res = res.chunk({diname:chk})
     return res
 
+### Other spatial operations: filtering
+from scipy.ndimage import gaussian_filter
+def gauss_filt(ds_or_da, sigma=3, truncate=4, boundary="nearest"):
+    """ apply scipy.ndimage.gaussian_filter to a xarray.DataArray, 
+    along every dimension (assume isotropy and homogeneity of grid spacing)
+    """
+    _bnds = {"reflect":"reflect", "nearest":"nearest", "periodic":"wrap"}
+        
+    if isinstance(ds_or_da, xr.Dataset):
+        res = xr.merge([gauss_filt(da, sigma=sigma, truncate=truncate, boundary=boundary) 
+                         for da in ds_or_da.data_vars.values()])
+    else:
+        gf_kwgs = dict(sigma=sigma, truncate=truncate)
+        if isinstance(boundary, (float, int)):
+            gf_kwgs.update({"mode":"constant", "cval":boundary})
+        else:
+            gf_kwgs.update({"mode":_bnds[boundary]})
+        res = ds_or_da.data.map_overlap(lambda x: gaussian_filter(x, **gf_kwgs), 
+                                depth=sigma*truncate, boundary=boundary)
+        res = xr.DataArray(res, dims=ds_or_da.dims).rename(ds_or_da.name)
+    
+    return res
