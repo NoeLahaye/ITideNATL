@@ -8,11 +8,36 @@ import xarray as xr
 from xorca.orca_names import z_dims
 
 from .utils import _parse_name_dict, _da_or_ds
-from .tools import misc as ut
 
 # grid related utilitaries. see also in tools.misc.py
 def _get_z_dim(data):
     return next(iter(dim for dim in z_dims if dim in data.dims), None)
+
+def _get_dim_from_d(ds_or_da, dim):
+    """ return full dimension name from first letter (e.g. "x" -> "x_c" or "x_r") """
+    if isinstance(dim, (list, tuple)):
+        diname = {d: _get_dim_from_d(ds_or_da, d) for d in dim}
+    elif isinstance(dim, str):
+        diname = next(d for d in ds_or_da.dims if d[0]==dim)
+    else:
+        raise TypeError("dim must be of type str or list(str) or tuple(str)")
+    return diname
+
+def _find_common_dims(ds_or_dalist, what="data_vars"):
+    """ ds_or_dalist: xarray.Dataset or list(xarray.DataArray) """
+    if isinstance(ds_or_dalist, xr.Dataset):
+        if what == "coords":
+            data = ds_or_dalist.coords.values()
+        elif what == "data_vars":
+            data = ds_or_dalist.data_vars.values()
+        else:
+            raise ValueError("unrecognized option 'what' for the Dataset")
+    elif isinstance(ds_or_dalist, list):
+        data = ds_or_dalist
+    else:
+        raise ValueError("ds_or_dalist must be a xarray.Dataset or list of xarray.DataArray")
+                            
+    return list(set.intersection(*map(set, [v.dims for v in data])))
 
 def _has_metrics(xgrid):
     """ check if xgcm.Grid object has metrics. Preliminary version """
@@ -289,7 +314,7 @@ def diff_on_grid(da, dim, grid, upmask=False, diff_before_interp=True):
     if diff_before_interp:
         dif = diff_on_grid_diffbeforeinterp(da, dim, grid, upmask)
     else:
-        diname = ut._get_dim_from_d(da, dim)
+        diname = _get_dim_from_d(da, dim)
         chk = da.chunks
         if chk:
             chk = chk[da.dims.index(diname)][0]
@@ -312,7 +337,7 @@ def diff_on_grid_diffbeforeinterp(da, dim, grid, upmask=False):
     """ compute derivative on the same grid
     dim must be the first letter of the dimension name (case sensitive) and the xgcm.Grid axis name (case insensitive)
     uses xgcm.Grid.derivative, assuming correct metrics are contained in grid object """
-    diname = ut._get_dim_from_d(da, dim)
+    diname = _get_dim_from_d(da, dim)
     chk = da.chunks
     if chk:
         chk = chk[da.dims.index(diname)][0]
@@ -335,6 +360,9 @@ from scipy.ndimage import gaussian_filter
 def gauss_filt(ds_or_da, sigma=3, truncate=4, boundary="nearest"):
     """ apply scipy.ndimage.gaussian_filter to a xarray.DataArray, 
     along every dimension (assume isotropy and homogeneity of grid spacing)
+    TODO: 
+        - restore coordinates
+        - deal with masked region (replace with 0 or mean or, even better, a local mean)
     """
     _bnds = {"reflect":"reflect", "nearest":"nearest", "periodic":"wrap"}
         

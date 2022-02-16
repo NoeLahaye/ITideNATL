@@ -1,6 +1,6 @@
 import xarray as xr
-from .tools.misc import _is_complex
-from .gridop import _has_metrics
+from .tools import misc as ut
+from . import gridop as gop
 from xgcm import Grid
 
 _flux_names = {"p":"p", "u":"u", "v":"v", "h":"hbot"}
@@ -50,13 +50,16 @@ def calc_flux(ds_or_da, **kwargs):
     _itp_kwg = dict(boundary="extrapolate")
     dap, dau, dav, hbot, xgrid = _parse_calc_flux_args(ds_or_da, **kwargs)
     vavg = kwargs.get("vavg", _flux_dico["vavg"])
-    cpamp = _is_complex(dap)
+    cpamp = ut._is_complex(dap)
+    
+    dims = gop._get_dim_from_d(dap, ("x", "y"))
+    chks = {k: ut.get_chunks(dap, v) for k,v in dims.items()}
     
     dr = xr.Dataset()
     if cpamp:
         dap = dap.conj()
-    dr["Fx"] = xgrid.interp(dau, "X", **_itp_kwg) * dap
-    dr["Fy"] = xgrid.interp(dav, "Y", **_itp_kwg) * dap
+    dr["Fx"] = xgrid.interp(dau, "X", **_itp_kwg).chunk({dims["x"]:chks["x"]}) * dap
+    dr["Fy"] = xgrid.interp(dav, "Y", **_itp_kwg).chunk({dims["x"]:chks["x"]}) * dap
     if dap.dtype in ["complex64", "complex128"]:
         dr = 2 * dr.real
     if not vavg:
@@ -94,17 +97,25 @@ def calc_div_flux(ds_or_da, **kwargs):
     dap, dau, dav, hbot, xgrid = _parse_calc_flux_args(ds_or_da, **kwargs)
     vavg = kwargs.get("vavg", _flux_dico["vavg"])
     sep_contrib = kwargs.get("sep_contrib", _flux_dico["sep_contrib"])
-    cpamp = _is_complex(dap)
-    diff = xgrid.derivative if _has_metrics(xgrid) else xgrid.diff
+    cpamp = ut._is_complex(dap)
+    diff = xgrid.derivative if gop._has_metrics(xgrid) else xgrid.diff
+    
+    chkp = {k: {v: ut.get_chunks(dap, v)} for k,v in gop._get_dim_from_d(dap, ("x", "y")).items()}
+    chkuv = [gop._get_dim_from_d(v, d) for d, v in zip(["x", "y"], [dau, dav])] # dims
+    chkuv = {d: {k: ut.get_chunks(v, k)} for d,k,v in zip(("x","y"), chkuv, [dau,dav])}
         
     dr = xr.Dataset()
     if cpamp:
         dap = dap.conj()
     if sep_contrib:
-        dx_pu = diff(xgrid.interp(dap, "X", **_itp_kwg) * dau, "X", **_dif_kwg)
-        dy_pv = diff(xgrid.interp(dap, "Y", **_itp_kwg) * dav, "Y", **_dif_kwg)
-        pu_dh = xgrid.interp(dau * diff(hbot, "X", **_dif_kwg), "X", **_dif_kwg) * dap
-        pv_dh = xgrid.interp(dav * diff(hbot, "Y", **_dif_kwg), "Y", **_dif_kwg) * dap
+        dx_pu = diff(xgrid.interp(dap, "X", **_itp_kwg).chunk(chkuv["x"]) * dau, 
+                     "X", **_dif_kwg).chunk(chkp["x"])
+        dy_pv = diff(xgrid.interp(dap, "Y", **_itp_kwg).chunk(chkuv["y"]) * dav, 
+                     "Y", **_dif_kwg).chunk(chkp["y"])
+        pu_dh = xgrid.interp(dau * diff(hbot, "X", **_dif_kwg).chunk(chkuv["x"]), 
+                             "X", **_dif_kwg).chunk(chkp["x"]) * dap
+        pv_dh = xgrid.interp(dav * diff(hbot, "Y", **_dif_kwg).chunk(chkuv["y"]), 
+                             "Y", **_dif_kwg).chunk(chkp["y"]) * dap
         if vavg:
             dr["dpuv"] = dx_pu + dy_pv
             dr["puvdh"] = (pu_dh + pv_dh) / hbot
@@ -113,8 +124,10 @@ def calc_div_flux(ds_or_da, **kwargs):
             dr["puvdh"] = pu_dh + pv_dh
         dr["divF"] = dr.dpuv + dr.puvdh
     else:
-        divf = diff(xgrid.interp(dap * hbot, "X", **_itp_kwg) * dau, "X", **_dif_kwg) \
-                + diff(xgrid.interp(dap * hbot, "Y", **_itp_kwg) * dav, "Y", **_dif_kwg)
+        divf = diff(xgrid.interp(dap * hbot, "X", **_itp_kwg).chunk(chkuv["x"]) * dau, 
+                    "X", **_dif_kwg).chunk(chkp["x"]) \
+                + diff(xgrid.interp(dap * hbot, "Y", **_itp_kwg).chunk(chkuv["y"]) * dav, 
+                       "Y", **_dif_kwg).chunk(chkp["y"])
         if vavg:
             dr["divF"] = divf / hbot
         else:
