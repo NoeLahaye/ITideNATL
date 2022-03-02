@@ -12,7 +12,7 @@ from .utils import _da_or_ds
 def comp_pres(ds, xgrid, **kwargs):
     """ compute pressure anomaly by vertical integration of local in-situ density
     density interpolated on w-points, then integration goes from w -> T levels (implementation close to NEMO code)
-    Pressure is computing by vertically integrating density: psurf + int_z \rho dz',
+    Pressure is computed by vertically integrating density: psurf + int_z \rho dz',
     with \rho=sigma_i (= potential density - 1000), and psurf = rho0 * ssh (+ dens ano if not variable-volume and s_dens_ano is True)
     adapted to variable volume formulation (enforced if zmet explicitly passed as an xarray)
 
