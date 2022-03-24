@@ -68,7 +68,10 @@ def custom_distribute(ds_or_da, op=None,
     Nd = ds_or_da[d].size
     if by_chunks:
         dim = np.r_[0, np.cumsum(ut.get_chunks(ds_or_da, d))]
+
         chunks = dim[np.r_[np.arange(0, len(dim)-1, c), -1]]
+        if verbose:
+            print("processing dim", d, ", found", dim, ", chunks", chunks)
     else:
         chunks = [np.arange(0, Nd-1, c), Nd]
 
