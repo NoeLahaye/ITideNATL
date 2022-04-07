@@ -3,6 +3,8 @@ grid operations for the NEMO grid using xarray and xgcm capabilities through xor
 At this stage, most routines are for vertical grid operations, and in particular dealing with variable volume 
 configuration (grid breathing) due to SSH, with z-level formulation (partial step and full step -- not checked)
 """
+import numpy as np
+import dask.array as dr
 import xarray as xr
 
 from xorca.orca_names import z_dims
@@ -357,26 +359,66 @@ def diff_on_grid_diffbeforeinterp(da, dim, grid, upmask=False):
 
 ### Other spatial operations: filtering
 from scipy.ndimage import gaussian_filter
-def gauss_filt(ds_or_da, sigma=3, truncate=4, boundary="nearest"):
+
+def fill_masked(da, limit, mask=None, dims=None):
+    """ rudimentary version: replace with zeros, i.e. wrapper of xr.fillna) """
+    if mask is not None:
+        res = da.where(mask, 0.)
+    else:
+        res = da.fillna(0.) # warning this will give 0 when re-applying mask on output in gauss_filt
+    return res
+
+def gauss_filt(ds_or_da, **kwargs):
     """ apply scipy.ndimage.gaussian_filter to a xarray.DataArray, 
     along every dimension (assume isotropy and homogeneity of grid spacing)
+
+    Parameters:
+    __________
+    ds_or_da: xarray.Dataset or xarray.DataArray
+        data to smooth
+    sigma: int, optional (default: 3)
+        width of gaussian kernel in grid points, passed to scipy.ndimage.gaussian_filter
+    truncate: int, optional (default: 4)
+        window size in terms of sigma, passed to scipy.ndimage.gaussian_filter
+    boundary: str, optional (default: "nearest")
+        how to deal with boundaries. Passed to dask.map_overlap ("boundary" arg) and 
+        scipy.ndimage.gaussian_filter ("mode" argument). 
+        Possible values are "reflect", "nearest" and "periodic" or a scalar indicating the constant value to use
+    fix_masked: bool, optional (default: True)
+        whether masked value dealt with. See code for procedure
     TODO: 
         - restore coordinates
-        - deal with masked region (replace with 0 or mean or, even better, a local mean)
     """
     _bnds = {"reflect":"reflect", "nearest":"nearest", "periodic":"wrap"}
         
     if isinstance(ds_or_da, xr.Dataset):
-        res = xr.merge([gauss_filt(da, sigma=sigma, truncate=truncate, boundary=boundary) 
+        res = xr.merge([gauss_filt(da, **kwargs) 
                          for da in ds_or_da.data_vars.values()])
     else:
+        sigma, truncate = kwargs.get("sigma", 3), kwargs.get("truncate", 4)
+        boundary, fix_masked = kwargs.get("boundary", "nearest"), kwargs.get("fix_masked", False)
+        if fix_masked:
+            if "mask" in "kwargs":
+                mask = kwargs["mask"]
+            elif "tmask" in ds_or_da.coords:
+                mask = ds_or_da["tmask"]
+            elif "tmaskutil" in ds_or_da.coords:
+                mask = ds_or_da["tmaskutil"]
+            else:
+                mask = np.isfinite(ds_or_da)
+            da = fill_masked(ds_or_da, limit=sigma*truncate, mask=mask)
+        else:
+            da = ds_or_da
         gf_kwgs = dict(sigma=sigma, truncate=truncate)
         if isinstance(boundary, (float, int)):
             gf_kwgs.update({"mode":"constant", "cval":boundary})
         else:
             gf_kwgs.update({"mode":_bnds[boundary]})
-        res = ds_or_da.data.map_overlap(lambda x: gaussian_filter(x, **gf_kwgs), 
+        res = da.data.map_overlap(lambda x: gaussian_filter(x, **gf_kwgs), 
                                 depth=sigma*truncate, boundary=boundary)
-        res = xr.DataArray(res, dims=ds_or_da.dims).rename(ds_or_da.name)
+        res = xr.DataArray(res, dims=da.dims).rename(da.name)
+        res = res.assign_coords(da.coords)
+        if fix_masked: ### TODO fix this, it breaks everything
+            res = res.where(mask)
     
     return res

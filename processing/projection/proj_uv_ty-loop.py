@@ -26,7 +26,8 @@ import xarray as xr
 from xgcm import Grid
 
 from proj_utils import proj_puv, get_uv_mean_grid
-import itidenatl.utils as ut
+from itidenatl.tools import files as uf
+from itidenatl.tools import dataio as io
 
 ### Intialize dask (https://mpi.dask.org/en/latest/batch.html)
 from distributed import Client, performance_report
@@ -36,7 +37,7 @@ if True:
     from dask_mpi import initialize
     #initialize(nthreads=4, interface="ib0", memory_limit=21e9, 
     #initialize(nthreads=3, interface="ib0", memory_limit=17e9, 
-    initialize(nthreads=2, interface="ib0", memory_limit=12e9, 
+    initialize(nthreads=2, interface="ib0", memory_limit=5e9, 
             dashboard=False, local_directory=scratch)
     client=Client()
 else:
@@ -50,8 +51,8 @@ logging.info("Cluster should be connected -- dashboard at {}".format(client.dash
 ### define chunking and computational subdomains (y, t)
 chunks = {"t":1, "z":10, "y":100, "x":-1}
 chk_store = {"t":-1, "mode":1, "y":400, "x":-1} 
-nk_t = 2 # process nk_t instants at a time (must be a divider of nt_f)
-sk_y = 200 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size)
+nk_t = 1 # process nk_t instants at a time (must be a divider of nt_f)
+sk_y = 100 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size)
 if len(sys.argv)>1:
     var = sys.argv[1]
 else:
@@ -72,7 +73,7 @@ region = {"t":slice(0,None), "x":slice(0,None), "y":slice(0,None)}
 #workdir = Path("/work/CT1/ige2071/nlahaye")
 worksha = Path("/work/CT1/ige2071/SHARED")
 
-data_path = Path("/work/CT1/hmg2840/lbrodeau/eNATL60")
+#data_path = Path("/work/CT1/hmg2840/lbrodeau/eNATL60")
 grid_uv_path = worksha/"vmodes/phi_{}_10.zarr".format(var)
 grid_mode_path = scratch/"eNATL60_grid_vmodes_proj_pres.zarr" 
 out_dir = worksha/"modal_proj/modamp_{}".format(var)
@@ -87,7 +88,7 @@ log_file = "proj_{}_{}.log".format(var, "{}") #.format(i_day)
 nt_f = 24 # time instant per file
 assert nt_f%nk_t == 0 and sk_y%chunks["y"] == 0
 ### get date (day) and check for existing log files
-sim_dates = ut.get_date_from_iday(i_days)
+sim_dates = uf.get_date_from_iday(i_days)
 for da in sim_dates:
     if (log_dir/log_file.format(da)).exists():
         raise ValueError("{} already processed? found corresponding log file".format(da))
@@ -117,9 +118,9 @@ dim_itp = "xy"["uv".index(var)]
 les_var = [uv_name, "sossheig"]
 v = les_var[0]
 tmes = time.time()
-ds = ut.open_one_var(ut.get_eNATL_path(v, i_days), chunks=chunks, varname=v)
+ds = io.open_one_var(uf.get_eNATL_path(v, i_days), chunks=chunks, varname=v)
 for v in les_var[1:]:
-    ds = ds.merge(ut.open_one_var(ut.get_eNATL_path(v,i_days), chunks=chunks, varname=v)\
+    ds = ds.merge(io.open_one_var(uf.get_eNATL_path(v,i_days), chunks=chunks, varname=v)\
                     .reset_coords(drop=True))
 ds = ds.isel({d:region[d[0]] for d in ds.dims if d[0] in region})
 logging.info("opened velocity and SSH data -- ellapsed time {:.1f} s".format(time.time()-tmes))
@@ -150,8 +151,8 @@ if not (restart is None or restart is False):
 else:
     for i,da in enumerate(sim_dates): 
         from_files = ", ".join([str(grid_mode_path), str(grid_uv_path),
-                                str(ut.get_eNATL_path(uv_name, i_days[i])), 
-                               str(ut.get_eNATL_path("sossheig", i_days[i]))
+                                str(uf.get_eNATL_path(uv_name, i_days[i])), 
+                               str(uf.get_eNATL_path("sossheig", i_days[i]))
                                ])
         amod.attrs = {"from_files": from_files, "generating_script": sys.argv[0], 
                       "by": "N. Lahaye (noe.lahaye@inria.fr)", 

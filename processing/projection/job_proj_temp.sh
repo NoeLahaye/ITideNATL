@@ -5,8 +5,8 @@
 #SBATCH --ntasks-per-node=TASKPNODE
 #SBATCH --cpus-per-task=CPUPTASK
 #SBTACH --threads-per-core=1
-#SBATCH --mem=118000        ### using nodes with 128Go
-#SBATCH --constraint=HSW24
+##SBATCH --mem=118000        ### using nodes with 128Go
+#SBATCH --constraint=BDW28
 #SBATCH --time=TIME
 #SBATCH -e outjob_proj_VAR.e%j
 #SBATCH -o outjob_proj_VAR.o%j
@@ -22,7 +22,7 @@ set -e
 eval "$(conda shell.bash hook)"
 conda activate /scratch/cnt0024/ige2071/nlahaye/conda/conda38
 nmpi=$SLURM_NTASKS 
-export OMPI_MCA_coll_tuned_bcast_algorithm=6
+#export OMPI_MCA_coll_tuned_bcast_algorithm=4
 
 echo "now doing it" `date` "JOB ID:" $SLURM_JOBID, "node(s):" $SLURM_JOB_NODELIST
 
