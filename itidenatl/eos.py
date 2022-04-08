@@ -366,6 +366,10 @@ def rho_insitu_tsp(temp, salt, pdep):
     return prd.astype(temp.dtype)
 
 def rho_gsw(ds, **kwargs):
+    """ returns reduced in-situ density anomaly (with respect ro background profile)
+    i.e. r/rho0, whith rho = rho0 + r(x,y,z,t) + r0(z)
+    uses gsw routine, result is the same as eNATL60 routine, TEOS10 used (Roquet et al 2015)
+    """
     var_names = _defo_dico.copy()
     var_names.update(kwargs)
 

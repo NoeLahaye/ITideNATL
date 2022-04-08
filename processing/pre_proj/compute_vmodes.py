@@ -59,7 +59,7 @@ out_file = works/f"vmodes/eNATL60_{avg_type}-mean_vmodes{app}.zarr"
 nmodes = 10
 out_chk = {"mode":1, "x_c":-1, "z_c": 30, "z_l":30}
 wrk_chk = {"x_c":400}
-nseg_y = 200 # y-segment size: choose it a multiple or a divider of chunk size
+nseg_y = 100 # y-segment size: choose it a multiple or a divider of chunk size
 drop_land = True
 restart = False # or jy/nseg_y
 
