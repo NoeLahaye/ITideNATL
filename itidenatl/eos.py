@@ -2,6 +2,10 @@
 Equation Of State powered for xarray and xgcm.Grid and adapted to NEMO output through xorca
 This package merely contains a few routines borrowed from CDFTOOLS (https://github.com/meom-group/CDFTOOLS)
 to compute basic things such as the density and the Brunt-Vaisala frequency
+
+TODO:
+    - use xarray wrapper for gsw library
+    - test new implementation of bvf2 and compare with gsw library
 """
 import xgcm
 import gsw
@@ -17,69 +21,292 @@ import gsw
 
 _defo_dico = {"grav": 9.81, "z_inv": True,
              "zmet": "e3w", "zdim":"Z", "zcoord":"depth_l",
-             "temp": "votemper", "salt": "vosaline", "pref":"depth_c"}
+             "temp": "votemper", "salt": "vosaline", "pref":"depth_c", 
+             "alpha":"alpha", "beta":"beta"}
 
 from itidenatl.utils import _parse_inp_dict
+from .eos_coefs import *
 
-rdeltaS = 32.
-r1_S0  = 0.875/35.16504
-r1_T0  = 1./40.
-r1_Z0  = 1.e-4
-rau0 = 1026.
 
-EOS000 = 8.0189615746e+02
-EOS100 = 8.6672408165e+02
-EOS200 = -1.7864682637e+03
-EOS300 = 2.0375295546e+03
-EOS400 = -1.2849161071e+03
-EOS500 = 4.3227585684e+02
-EOS600 = -6.0579916612e+01
-EOS010 = 2.6010145068e+01
-EOS110 = -6.5281885265e+01
-EOS210 = 8.1770425108e+01
-EOS310 = -5.6888046321e+01
-EOS410 = 1.7681814114e+01
-EOS510 = -1.9193502195
-EOS020 = -3.7074170417e+01
-EOS120 = 6.1548258127e+01
-EOS220 = -6.0362551501e+01
-EOS320 = 2.9130021253e+01
-EOS420 = -5.4723692739
-EOS030 = 2.1661789529e+01
-EOS130 = -3.3449108469e+01
-EOS230 = 1.9717078466e+01
-EOS330 = -3.1742946532
-EOS040 = -8.3627885467
-EOS140 = 1.1311538584e+01
-EOS240 = -5.3563304045
-EOS050 = 5.4048723791e-01
-EOS150 = 4.8169980163e-01
-EOS060 = -1.9083568888e-01
-EOS001 = 1.9681925209e+01
-EOS101 = -4.2549998214e+01
-EOS201 = 5.0774768218e+01
-EOS301 = -3.0938076334e+01
-EOS401 = 6.6051753097
-EOS011 = -1.3336301113e+01
-EOS111 = -4.4870114575
-EOS211 = 5.0042598061
-EOS311 = -6.5399043664e-01
-EOS021 = 6.7080479603
-EOS121 = 3.5063081279
-EOS221 = -1.8795372996
-EOS031 = -2.4649669534
-EOS131 = -5.5077101279e-01
-EOS041 = 5.5927935970e-01
-EOS002 = 2.0660924175
-EOS102 = -4.9527603989
-EOS202 = 2.5019633244
-EOS012 = 2.0564311499
-EOS112 = -2.1311365518e-01
-EOS022 = -1.2419983026
-EOS003 = -2.3342758797e-02
-EOS103 = -1.8507636718e-02
-EOS013 = 3.7969820455e-01
+################################################################################
+########## - - - Taken from pre-processed fortran files of eNATL60 - - - #######
+################################################################################
 
+### taken from pre-processed eNATL60 NEMO 3.6 file eosbn2.f90
+def rho_insitu(ds, inv_p=True, **kwargs):
+    var_names = _defo_dico.copy()
+    var_names.update(kwargs)
+
+    pdep = ds[var_names["pref"]]
+    if inv_p:
+        pdep = -pdep
+    res = rho_insitu_tsp(ds[var_names["temp"]], ds[var_names["salt"]], pdep)
+    if "tmask" in ds:
+        res = res.where(ds.tmask)
+    return res
+
+def rho_insitu_tsp(temp, salt, pdep):
+    # eos_insitu(pts, prd, pdep)
+    #!----------------------------------------------------------------------
+    #!                   ***  ROUTINE eos_insitu  ***
+    #!
+    #! ** Purpose :   Compute the in situ density (ratio rho/rau0) from
+    #!       potential temperature and salinity using an equation of state
+    #!       defined through the namelist parameter nn_eos.
+    #!
+    #! ** Method  :   prd(t,s,z) = ( rho(t,s,z) - rau0 ) / rau0
+    #!         with   prd    in situ density anomaly      no units
+    #!                t      TEOS10: CT or EOS80: PT      Celsius
+    #!                s      TEOS10: SA or EOS80: SP      TEOS10: g/kg or EOS80: psu
+    #!                z      depth                        meters
+    #!                rho    in situ density              kg/m^3
+    #!                rau0   reference density            kg/m^3
+    #!
+    #!     nn_eos = -1 : polynomial TEOS-10 equation of state is used for rho(t,s,z).
+    #!         Check value: rho = 1028.21993233072 kg/m^3 for z=3000 dbar, ct=3 Celcius, sa=35.5 g/kg
+    #!
+    #!     nn_eos =  0 : polynomial EOS-80 equation of state is used for rho(t,s,z).
+    #!         Check value: rho = 1028.35011066567 kg/m^3 for z=3000 dbar, pt=3 Celcius, sp=35.5 psu
+    #!
+    #!     nn_eos =  1 : simplified equation of state
+    #!              prd(t,s,z) = ( -a0*(1+lambda/2*(T-T0)+mu*z+nu*(S-S0))*(T-T0) + b0*(S-S0) ) / rau0
+    #!              linear case function of T only: rn_alpha<>0, other coefficients = 0
+    #!              linear eos function of T and S: rn_alpha and rn_beta<>0, other coefficients=0
+    #!              Vallis like equation: use default values of coefficients
+    #!
+    #! ** Action  :   compute prd , the in situ density (no units)
+    #!
+    #! References :   Roquet et al, Ocean Modelling, in preparation (2014)
+    #!                Vallis, Atmospheric and Oceanic Fluid Dynamics, 2006
+    #!                TEOS-10 Manual, 2010
+    #!----------------------------------------------------------------------
+    #     REAL(wp), DIMENSION(jpi,jpj,jpk,jpts), INTENT(in   ) ::   pts   ! 1 : potential temperature  [Celcius]
+    #                                                               ! 2 : salinity               [psu]
+    #     REAL(wp), DIMENSION(jpi,jpj,jpk     ), INTENT(  out) ::   prd   ! in situ density            [-]
+    #     REAL(wp), DIMENSION(jpi,jpj,jpk     ), INTENT(in   ) ::   pdep  ! depth                      [m]
+    #
+    #     INTEGER  ::   ji, jj, jk                ! dummy loop indices
+    #     REAL(wp) ::   zt , zh , zs , ztm        ! local scalars
+    #     REAL(wp) ::   zn , zn0, zn1, zn2, zn3   !   -      -
+    #!----------------------------------------------------------------------
+    zh  = pdep * r1_Z0                                  # depth
+    zt  = temp * r1_T0                           # temperature
+    zs  = ( abs( salt + rdeltaS ) * r1_S0 )**.5   # square root salinity
+    
+    zn3 = EOS013 * zt + EOS103 * zs + EOS003
+    
+    zn2 = (EOS022 * zt + EOS112 * zs + EOS012) * zt \
+           + (EOS202 * zs + EOS102) * zs + EOS002
+    
+    zn1 = (((EOS041 * zt + EOS131 * zs + EOS031) * zt   \
+           + (EOS221 * zs + EOS121) * zs + EOS021) * zt   \
+           + ((EOS311 * zs + EOS211) * zs + EOS111) * zs + EOS011) * zt   \
+           + (((EOS401 * zs + EOS301) * zs + EOS201) * zs + EOS101) * zs + EOS001
+    
+    zn0 = (((((EOS060 * zt  + EOS150 * zs + EOS050) * zt   \
+           + (EOS240 * zs + EOS140) * zs + EOS040) * zt   \
+           + ((EOS330 * zs + EOS230) * zs + EOS130) * zs + EOS030) * zt   \
+           + (((EOS420 * zs + EOS320) * zs + EOS220) * zs + EOS120) * zs + EOS020) * zt   \
+           + ((((EOS510 * zs + EOS410) * zs + EOS310) * zs + EOS210) * zs + EOS110) * zs + EOS010) * zt   \
+           + (((((EOS600 * zs + EOS500) * zs + EOS400) * zs + EOS300) * zs + EOS200) * zs + EOS100) * zs + EOS000
+    
+    zn  = ( ( zn3 * zh + zn2 ) * zh + zn1 ) * zh + zn0
+    
+    prd = (  zn / rau0 - 1. ) # * ztm  # density anomaly (masked) # NJAL: tmask (ztm) removed
+    
+    return prd.astype(temp.dtype)
+
+def ts_expan_ratio(ds_or_da, salt=None, pdep=None, inv_p=True):
+    """  Calculates thermal/haline expansion ratio 
+    
+    Parameters
+    __________
+    Two xr.DataArray or one xr.Dataset for temperature and sallinity 
+
+    Returns
+    _______
+    Two xr.DataArray for thermal and haline expansion ratio
+
+    Taken from CDFtools: SUBROUTINE rab_3d( pts, pab )
+    !!----------------------------------------------------------------------
+    !!                 ***  ROUTINE rab_3d  ***
+    !!
+    !! ** Purpose :   Calculates thermal/haline expansion ratio at T-points
+    !!
+    !! ** Method  :   calculates alpha / beta at T-points
+    !!
+    !! ** Action  : - pab     : thermal/haline expansion ratio at T-points
+    !!----------------------------------------------------------------------
+          REAL(wp), DIMENSION(jpi,jpj,jpk,jpts), INTENT(in   ) ::   pts   ! pot. temperature & salinity
+          REAL(wp), DIMENSION(jpi,jpj,jpk,jpts), INTENT(  out) ::   pab   ! thermal/haline expansion ratio
+    !
+          INTEGER  ::   ji, jj, jk                ! dummy loop indices
+          REAL(wp) ::   zt , zh , zs , ztm        ! local scalars
+          REAL(wp) ::   zn , zn0, zn1, zn2, zn3   !   -      -
+    !!----------------------------------------------------------------------
+    """
+
+    if isinstance(ds_or_da, xr.Dataset):
+        var_names = _defo_dico.copy()
+        var_names.update(kwargs)
+        temp = ds[var_names["temp"]]
+        salt = ds[var_names["salt"]]
+        pdep = ds[var_names["pref"]]
+    else:
+        assert (salt is not None) and (pdep is not None)
+        temp = ds_or_da
+    if inv_p:
+        pdep = -pdep
+
+    ### Prep
+    zh  = pdep * r1_Z0                                # depth
+    zt  = temp * r1_T0                           # temperature
+    zs  = ( abs( salt + rdeltaS ) * r1_S0 )**.5   # square root salinity
+
+    ### alpha (thermal expansion ratio)
+    zn3 = ALP003
+
+    zn2 = ALP012 * zt + ALP102 * zs + ALP002
+
+    zn1 = ( ( ALP031 * zt + ALP121 * zs + ALP021 ) * zt 
+            + ( ALP211 * zs + ALP111 ) * zs + ALP011 ) * zt   
+          + ( ( ALP301 * zs + ALP201 ) * zs + ALP101 ) * zs + ALP001
+
+    zn0 = ( ( ( ( ALP050 * zt + ALP140 * zs + ALP040 ) * zt
+               + ( ALP230 * zs + ALP130 ) * zs + ALP030 ) * zt
+             + ( ( ALP320 * zs + ALP220 ) * zs + ALP120 ) * zs + ALP020 ) * zt
+          + ( ( ( ALP410 * zs + ALP310 ) * zs + ALP210 ) * zs + ALP110 ) * zs + ALP010 ) * zt
+          + ( ( ( ( ALP500 * zs + ALP400 ) * zs + ALP300 ) * zs + ALP200 ) * zs + ALP100 ) * zs + ALP000
+
+    zn  = ( ( zn3 * zh + zn2 ) * zh + zn1 ) * zh + zn0
+
+    ### beta (haline expansion ratio)
+    zn3 = BET003
+
+    zn2 = BET012 * zt + BET102 * zs + BET002
+
+    zn1 = ( ( BET031 * zt + BET121 * zs + BET021 ) * zt
+           + ( BET211 * zs + BET111 ) * zs + BET011 ) * zt
+           + ( ( BET301 * zs + BET201 ) * zs + BET101 ) * zs + BET001
+
+    zn0 = ( ( ( ( BET050 * zt + BET140 * zs + BET040 ) * zt
+               + ( BET230 * zs + BET130 ) * zs + BET030 ) * zt
+             + ( ( BET320 * zs + BET220 ) * zs + BET120 ) * zs + BET020 ) * zt
+           + ( ( ( BET410 * zs + BET310 ) * zs + BET210 ) * zs + BET110 ) * zs + BET010 ) * zt
+           + ( ( ( ( BET500 * zs + BET400 ) * zs + BET300 ) * zs + BET200 ) * zs + BET100 ) * zs + BET000
+
+    zn  = ( ( zn3 * zh + zn2 ) * zh + zn1 ) * zh + zn0
+
+    ### Finalize and return result
+    bas = ( zn / zs * r1_rau0 ).rename("alpha")
+    alt = ( zn * r1_rau0 ).rename("beta")
+    if "tmask" in ds_or_da:
+        alt, bas = alt.where(ds_or_da.tmask), bas.where(ds_or_da.tmask)
+    return alt, bas
+
+def bnsq(ds, grid=None, boundary="extrapolate", **kwargs):
+    """ compute Brunt-Vasiala Frequency. Implementation followint NEMO, TEOS-10-based routine
+    taken from SUBROUTINE bn2( pts, pab, pn2 )
+    !!----------------------------------------------------------------------
+    !!                  ***  ROUTINE bn2  ***
+    !!
+    !! ** Purpose :   Compute the local Brunt-Vaisala frequency at the
+    !!                time-step of the input arguments
+    !!
+    !! ** Method  :   pn2 = grav * (alpha dk[T] + beta dk[S] ) / e3w
+    !!      where alpha and beta are given in pab, and computed on T-points.
+    !!      N.B. N^2 is set one for all to zero at jk=1 in istate module.
+    !!
+    !! ** Action  :   pn2 : square of the brunt-vaisala frequency at w-point
+    !!
+    !!----------------------------------------------------------------------
+          REAL(wp), DIMENSION(jpi,jpj,jpk,jpts), INTENT(in   ) ::  pts   ! pot. temperature and salinity   [Celcius,psu]
+          REAL(wp), DIMENSION(jpi,jpj,jpk,jpts), INTENT(in   ) ::  pab   ! thermal/haline expansion coef.  [Celcius-1,psu-1]
+          REAL(wp), DIMENSION(jpi,jpj,jpk     ), INTENT(  out) ::  pn2   ! Brunt-Vaisala frequency squared [1/s^2]
+    !
+          INTEGER  ::   ji, jj, jk      ! dummy loop indices
+          REAL(wp) ::   zaw, zbw, zrw   ! local scalars
+    !!----------------------------------------------------------------------
+    """
+    dico = _parse_inp_dict(kwargs, _defo_dico)
+    temp, salt = ds[dico["temp"]], ds[dico["salt"]]
+    zdim, zmetric, zcoord = dico["zdim"], dico["zmet"], dico["zcoord"]
+    grav, z_inv = dico["grav"], dico["z_inv"]
+    pdep = ds[var_names["pref"]]
+    if z_inv:
+        pdep = -pdep
+    alt, bes = dico["alpha"], dico["beta"]
+    if alt in ds and bes in ds:
+        alt, bes = ds[alt], ds[bes]
+    else:
+        alt, bes = ts_expan_ratio(temp, salt, pdep, inv_p=False)
+
+    if grid is None: # no xgcm grid passed: use one without metrics (assume mid-depth points = w points)
+        grid = xgcm.Grid(ds, periodic=False)
+
+    z_sign = -1. if z_inv else 1. # depth increases with index
+
+    if True:
+        zaw = grid.interp(alt, zdim, boundary="extrapolate")
+        zbw = grid.interp(bes, zdim, boundary="extrapolate")
+    else:
+        raise NotImplementedError("True interpolation not implemented in bnsq")
+               #zrw =   ( gdepw_n(ji,jj,jk) - gdept_n(ji,jj,jk) )   &
+                  #&  / ( gdept_n(ji,jj,jk-1) - gdept_n(ji,jj,jk) ) 
+
+               #zaw = pab(ji,jj,jk,jp_tem) * (1. - zrw) + pab(ji,jj,jk-1,jp_tem) * zrw 
+               #zbw = pab(ji,jj,jk,jp_sal) * (1. - zrw) + pab(ji,jj,jk-1,jp_sal) * zrw
+
+               #pn2(ji,jj,jk) = grav * (  zaw * ( pts(ji,jj,jk-1,jp_tem) - pts(ji,jj,jk,jp_tem) )     &
+                  #&                    - zbw * ( pts(ji,jj,jk-1,jp_sal) - pts(ji,jj,jk,jp_sal) )  )  &
+
+    if "_metrics" in dir(grid):
+        try:
+            eosbn2 = z_sign * grav * ( zaw * grid.derivative(temp, zdim, boundary=boundary) 
+                             - zbw * grid.derivative(salt, zdim, boundary=boundary) )
+        except:
+            if zmetric not in ds:
+                raise ValueError("no metric found in dataset")
+            eosbn2 = z_sign * grav * ( zaw * grid.diff(temp, zdim, boundary=boundary) 
+                             - zbw * grid.diff(salt, zdim, boundary=boundary) ) / ds[zmetric]
+    else:
+        eosbn2 = z_sign * grav * ( zaw * grid.diff(temp, zdim, boundary=boundary) 
+                             - zbw * grid.diff(salt, zdim, boundary=boundary) ) / ds[zmetric]
+    
+    return eosbn2.rename("bvf")
+
+
+################################################################################
+############### - - - Wrappers of GSW library - - - ############################
+################################################################################
+
+def rho_gsw(ds, **kwargs):
+    """ returns reduced in-situ density anomaly (with respect ro background profile)
+    i.e. r/rho0, whith rho = rho0 + r(x,y,z,t) + r0(z)
+    uses gsw routine, result is the same as eNATL60 routine, TEOS10 used (Roquet et al 2015)
+    """
+    var_names = _defo_dico.copy()
+    var_names.update(kwargs)
+
+    pdep = ds[var_names["pref"]]
+    if inv_p:
+        pdep = -pdep
+    res = rho_gsw_tsp(ds[var_names["temp"]], ds[var_names["salt"]], pdep)
+    if "tmask" in ds:
+        res = res.where(ds.tmask)
+    return res
+
+def rho_gsw_tsp(temp, salt, pdep):
+    # this is not optimal : I should be able to get directly rho - r0 from gsw, since it should be how it is computed. 
+    # But this is still faster than rho_insitu above
+    r0 = gsw.rho(35.16504, 4, pdep) - gsw.rho(35.16504, 4, 0.)
+    res = gsw.rho(salt, temp, pdep) - r0 - rau0
+    return (res/rau0).astype(temp.dtype)
+
+
+################################################################################
+##################### Old routines from CDFtools.f90 ###########################
+################################################################################
 
 def bvf2(ds, grid=None, boundary="extrapolate", **kwargs):
     """ compute Brunt-Vaisala frequency squared
@@ -281,110 +508,4 @@ def sigmai_tsp( temp, salt, pref):
 
     return sigmai.astype(temp.dtype)
 
-### taken from pre-processed eNATL60 NEMO 3.6 file eosbn2.f90
-def rho_insitu(ds, inv_p=True, **kwargs):
-    var_names = _defo_dico.copy()
-    var_names.update(kwargs)
-
-    pdep = ds[var_names["pref"]]
-    if inv_p:
-        pdep = -pdep
-    res = rho_insitu_tsp(ds[var_names["temp"]], ds[var_names["salt"]], pdep)
-    if "tmask" in ds:
-        res = res.where(ds.tmask)
-    return res
-
-def rho_insitu_tsp(temp, salt, pdep):
-    # eos_insitu(pts, prd, pdep)
-    #!----------------------------------------------------------------------
-    #!                   ***  ROUTINE eos_insitu  ***
-    #!
-    #! ** Purpose :   Compute the in situ density (ratio rho/rau0) from
-    #!       potential temperature and salinity using an equation of state
-    #!       defined through the namelist parameter nn_eos.
-    #!
-    #! ** Method  :   prd(t,s,z) = ( rho(t,s,z) - rau0 ) / rau0
-    #!         with   prd    in situ density anomaly      no units
-    #!                t      TEOS10: CT or EOS80: PT      Celsius
-    #!                s      TEOS10: SA or EOS80: SP      TEOS10: g/kg or EOS80: psu
-    #!                z      depth                        meters
-    #!                rho    in situ density              kg/m^3
-    #!                rau0   reference density            kg/m^3
-    #!
-    #!     nn_eos = -1 : polynomial TEOS-10 equation of state is used for rho(t,s,z).
-    #!         Check value: rho = 1028.21993233072 kg/m^3 for z=3000 dbar, ct=3 Celcius, sa=35.5 g/kg
-    #!
-    #!     nn_eos =  0 : polynomial EOS-80 equation of state is used for rho(t,s,z).
-    #!         Check value: rho = 1028.35011066567 kg/m^3 for z=3000 dbar, pt=3 Celcius, sp=35.5 psu
-    #!
-    #!     nn_eos =  1 : simplified equation of state
-    #!              prd(t,s,z) = ( -a0*(1+lambda/2*(T-T0)+mu*z+nu*(S-S0))*(T-T0) + b0*(S-S0) ) / rau0
-    #!              linear case function of T only: rn_alpha<>0, other coefficients = 0
-    #!              linear eos function of T and S: rn_alpha and rn_beta<>0, other coefficients=0
-    #!              Vallis like equation: use default values of coefficients
-    #!
-    #! ** Action  :   compute prd , the in situ density (no units)
-    #!
-    #! References :   Roquet et al, Ocean Modelling, in preparation (2014)
-    #!                Vallis, Atmospheric and Oceanic Fluid Dynamics, 2006
-    #!                TEOS-10 Manual, 2010
-    #!----------------------------------------------------------------------
-    #     REAL(wp), DIMENSION(jpi,jpj,jpk,jpts), INTENT(in   ) ::   pts   ! 1 : potential temperature  [Celcius]
-    #                                                               ! 2 : salinity               [psu]
-    #     REAL(wp), DIMENSION(jpi,jpj,jpk     ), INTENT(  out) ::   prd   ! in situ density            [-]
-    #     REAL(wp), DIMENSION(jpi,jpj,jpk     ), INTENT(in   ) ::   pdep  ! depth                      [m]
-    #
-    #     INTEGER  ::   ji, jj, jk                ! dummy loop indices
-    #     REAL(wp) ::   zt , zh , zs , ztm        ! local scalars
-    #     REAL(wp) ::   zn , zn0, zn1, zn2, zn3   !   -      -
-    #!----------------------------------------------------------------------
-    zh  = pdep * r1_Z0                                  # depth
-    zt  = temp * r1_T0                           # temperature
-    zs  = ( abs( salt + rdeltaS ) * r1_S0 )**.5   # square root salinity
-    
-    zn3 = EOS013 * zt + EOS103 * zs + EOS003
-    
-    zn2 = (EOS022 * zt + EOS112 * zs + EOS012) * zt \
-           + (EOS202 * zs + EOS102) * zs + EOS002
-    
-    zn1 = (((EOS041 * zt + EOS131 * zs + EOS031) * zt   \
-           + (EOS221 * zs + EOS121) * zs + EOS021) * zt   \
-           + ((EOS311 * zs + EOS211) * zs + EOS111) * zs + EOS011) * zt   \
-           + (((EOS401 * zs + EOS301) * zs + EOS201) * zs + EOS101) * zs + EOS001
-    
-    zn0 = (((((EOS060 * zt  + EOS150 * zs + EOS050) * zt   \
-           + (EOS240 * zs + EOS140) * zs + EOS040) * zt   \
-           + ((EOS330 * zs + EOS230) * zs + EOS130) * zs + EOS030) * zt   \
-           + (((EOS420 * zs + EOS320) * zs + EOS220) * zs + EOS120) * zs + EOS020) * zt   \
-           + ((((EOS510 * zs + EOS410) * zs + EOS310) * zs + EOS210) * zs + EOS110) * zs + EOS010) * zt   \
-           + (((((EOS600 * zs + EOS500) * zs + EOS400) * zs + EOS300) * zs + EOS200) * zs + EOS100) * zs + EOS000
-    
-    zn  = ( ( zn3 * zh + zn2 ) * zh + zn1 ) * zh + zn0
-    
-    prd = (  zn / rau0 - 1. ) # * ztm  # density anomaly (masked) # NJAL: tmask (ztm) removed
-    
-    return prd.astype(temp.dtype)
-
-def rho_gsw(ds, **kwargs):
-    """ returns reduced in-situ density anomaly (with respect ro background profile)
-    i.e. r/rho0, whith rho = rho0 + r(x,y,z,t) + r0(z)
-    uses gsw routine, result is the same as eNATL60 routine, TEOS10 used (Roquet et al 2015)
-    """
-    var_names = _defo_dico.copy()
-    var_names.update(kwargs)
-
-    pdep = ds[var_names["pref"]]
-    if inv_p:
-        pdep = -pdep
-    res = rho_gsw_tsp(ds[var_names["temp"]], ds[var_names["salt"]], pdep)
-    if "tmask" in ds:
-        res = res.where(ds.tmask)
-    return res
-
-def rho_gsw_tsp(temp, salt, pdep):
-    # this is not optimal : I should be able to get directly rho - r0 from gsw, since it should be how it is computed. 
-    # But this is still faster than rho_insitu above
-    r0 = gsw.rho(35.16504, 4, pdep) - gsw.rho(35.16504, 4, 0.)
-    res = gsw.rho(salt, temp, pdep) - r0 - rau0
-    return (res/rau0).astype(temp.dtype)
 
