@@ -8,7 +8,12 @@ TODO:
     - test new implementation of bvf2 and compare with gsw library
 """
 import xgcm
-import gsw
+try:
+    import gsw_xarray as gsw
+except:
+    print("eos.py: package gsw_xarray not found. Using standard gsw instead")
+    import gsw
+import xarray as xr
 
 ### these definition could re-use xorca defs
 #_grav = 9.81
@@ -34,6 +39,10 @@ from .eos_coefs import *
 
 ### taken from pre-processed eNATL60 NEMO 3.6 file eosbn2.f90
 def rho_insitu(ds, inv_p=True, **kwargs):
+    """ compute in-situ density field following TEOS-10 implementation [Roquet et al 2015]
+    A constant vertical profile is substracted, following NEMO implementation.
+    Work from conservative temperature and absolute salinity.
+    """
     var_names = _defo_dico.copy()
     var_names.update(kwargs)
 
@@ -116,8 +125,8 @@ def rho_insitu_tsp(temp, salt, pdep):
     
     return prd.astype(temp.dtype)
 
-def ts_expan_ratio(ds_or_da, salt=None, pdep=None, inv_p=True):
-    """  Calculates thermal/haline expansion ratio 
+def ts_expan_ratio(ds_or_da, salt=None, pdep=None, inv_p=True, **kwargs):
+    """  Calculates thermal/haline expansion ratio; from conservative temperature and absolute salinity
     
     Parameters
     __________
@@ -149,9 +158,9 @@ def ts_expan_ratio(ds_or_da, salt=None, pdep=None, inv_p=True):
     if isinstance(ds_or_da, xr.Dataset):
         var_names = _defo_dico.copy()
         var_names.update(kwargs)
-        temp = ds[var_names["temp"]]
-        salt = ds[var_names["salt"]]
-        pdep = ds[var_names["pref"]]
+        temp = ds_or_da[var_names["temp"]]
+        salt = ds_or_da[var_names["salt"]]
+        pdep = ds_or_da[var_names["pref"]]
     else:
         assert (salt is not None) and (pdep is not None)
         temp = ds_or_da
@@ -168,45 +177,47 @@ def ts_expan_ratio(ds_or_da, salt=None, pdep=None, inv_p=True):
 
     zn2 = ALP012 * zt + ALP102 * zs + ALP002
 
-    zn1 = ( ( ALP031 * zt + ALP121 * zs + ALP021 ) * zt 
-            + ( ALP211 * zs + ALP111 ) * zs + ALP011 ) * zt   
+    zn1 = ( ( ALP031 * zt + ALP121 * zs + ALP021 ) * zt \
+            + ( ALP211 * zs + ALP111 ) * zs + ALP011 ) * zt \
           + ( ( ALP301 * zs + ALP201 ) * zs + ALP101 ) * zs + ALP001
 
-    zn0 = ( ( ( ( ALP050 * zt + ALP140 * zs + ALP040 ) * zt
-               + ( ALP230 * zs + ALP130 ) * zs + ALP030 ) * zt
-             + ( ( ALP320 * zs + ALP220 ) * zs + ALP120 ) * zs + ALP020 ) * zt
-          + ( ( ( ALP410 * zs + ALP310 ) * zs + ALP210 ) * zs + ALP110 ) * zs + ALP010 ) * zt
+    zn0 = ( ( ( ( ALP050 * zt + ALP140 * zs + ALP040 ) * zt \
+               + ( ALP230 * zs + ALP130 ) * zs + ALP030 ) * zt \
+             + ( ( ALP320 * zs + ALP220 ) * zs + ALP120 ) * zs + ALP020 ) * zt \
+          + ( ( ( ALP410 * zs + ALP310 ) * zs + ALP210 ) * zs + ALP110 ) * zs + ALP010 ) * zt \
           + ( ( ( ( ALP500 * zs + ALP400 ) * zs + ALP300 ) * zs + ALP200 ) * zs + ALP100 ) * zs + ALP000
 
     zn  = ( ( zn3 * zh + zn2 ) * zh + zn1 ) * zh + zn0
+    alt = ( zn * r1_rau0 ).rename("alpha")
 
     ### beta (haline expansion ratio)
     zn3 = BET003
 
     zn2 = BET012 * zt + BET102 * zs + BET002
 
-    zn1 = ( ( BET031 * zt + BET121 * zs + BET021 ) * zt
-           + ( BET211 * zs + BET111 ) * zs + BET011 ) * zt
+    zn1 = ( ( BET031 * zt + BET121 * zs + BET021 ) * zt \
+           + ( BET211 * zs + BET111 ) * zs + BET011 ) * zt \
            + ( ( BET301 * zs + BET201 ) * zs + BET101 ) * zs + BET001
 
-    zn0 = ( ( ( ( BET050 * zt + BET140 * zs + BET040 ) * zt
-               + ( BET230 * zs + BET130 ) * zs + BET030 ) * zt
-             + ( ( BET320 * zs + BET220 ) * zs + BET120 ) * zs + BET020 ) * zt
-           + ( ( ( BET410 * zs + BET310 ) * zs + BET210 ) * zs + BET110 ) * zs + BET010 ) * zt
+    zn0 = ( ( ( ( BET050 * zt + BET140 * zs + BET040 ) * zt \
+               + ( BET230 * zs + BET130 ) * zs + BET030 ) * zt \
+             + ( ( BET320 * zs + BET220 ) * zs + BET120 ) * zs + BET020 ) * zt \
+           + ( ( ( BET410 * zs + BET310 ) * zs + BET210 ) * zs + BET110 ) * zs + BET010 ) * zt \
            + ( ( ( ( BET500 * zs + BET400 ) * zs + BET300 ) * zs + BET200 ) * zs + BET100 ) * zs + BET000
 
     zn  = ( ( zn3 * zh + zn2 ) * zh + zn1 ) * zh + zn0
+    bas = ( zn / zs * r1_rau0 ).rename("beta")
 
     ### Finalize and return result
-    bas = ( zn / zs * r1_rau0 ).rename("alpha")
-    alt = ( zn * r1_rau0 ).rename("beta")
     if "tmask" in ds_or_da:
         alt, bas = alt.where(ds_or_da.tmask), bas.where(ds_or_da.tmask)
     return alt, bas
 
-def bnsq(ds, grid=None, boundary="extrapolate", **kwargs):
+def bvf2(ds, grid=None, boundary="extrapolate", **kwargs):
     """ compute Brunt-Vasiala Frequency. Implementation followint NEMO, TEOS-10-based routine
-    taken from SUBROUTINE bn2( pts, pab, pn2 )
+    taken from SUBROUTINE bn2( pts, pab, pn2 ).
+    From conservative temperature and absolute salinity.
+
     !!----------------------------------------------------------------------
     !!                  ***  ROUTINE bn2  ***
     !!
@@ -232,7 +243,7 @@ def bnsq(ds, grid=None, boundary="extrapolate", **kwargs):
     temp, salt = ds[dico["temp"]], ds[dico["salt"]]
     zdim, zmetric, zcoord = dico["zdim"], dico["zmet"], dico["zcoord"]
     grav, z_inv = dico["grav"], dico["z_inv"]
-    pdep = ds[var_names["pref"]]
+    pdep = ds[dico["pref"]]
     if z_inv:
         pdep = -pdep
     alt, bes = dico["alpha"], dico["beta"]
@@ -251,6 +262,7 @@ def bnsq(ds, grid=None, boundary="extrapolate", **kwargs):
         zbw = grid.interp(bes, zdim, boundary="extrapolate")
     else:
         raise NotImplementedError("True interpolation not implemented in bnsq")
+        # this could be achieved calling itidenatl.gridop.interp_z, but requires depth at T-levels and w-levels
                #zrw =   ( gdepw_n(ji,jj,jk) - gdept_n(ji,jj,jk) )   &
                   #&  / ( gdept_n(ji,jj,jk-1) - gdept_n(ji,jj,jk) ) 
 
@@ -280,10 +292,11 @@ def bnsq(ds, grid=None, boundary="extrapolate", **kwargs):
 ############### - - - Wrappers of GSW library - - - ############################
 ################################################################################
 
-def rho_gsw(ds, **kwargs):
+def rho_gsw(ds, inv_p=True, **kwargs):
     """ returns reduced in-situ density anomaly (with respect ro background profile)
     i.e. r/rho0, whith rho = rho0 + r(x,y,z,t) + r0(z)
-    uses gsw routine, result is the same as eNATL60 routine, TEOS10 used (Roquet et al 2015)
+    wapper around gsw routine based on TEOS-10 [Roquet elt al 2015]. 
+    Result is the same as eNATL60-derived rho_insitu routine above.
     """
     var_names = _defo_dico.copy()
     var_names.update(kwargs)
@@ -297,6 +310,14 @@ def rho_gsw(ds, **kwargs):
     return res
 
 def rho_gsw_tsp(temp, salt, pdep):
+    """ wrapper around gsw.rho to compute the in-situ density from conservative temperature and absolute salinity (TEOS-10). 
+    A mean vertical profile is subtracted to recoevr the same behaviour as NEMO implementation.
+    Result is the same as rho_insitu routine above.
+    
+    See also
+    ________
+    eos.rho_gsw
+    """
     # this is not optimal : I should be able to get directly rho - r0 from gsw, since it should be how it is computed. 
     # But this is still faster than rho_insitu above
     r0 = gsw.rho(35.16504, 4, pdep) - gsw.rho(35.16504, 4, 0.)
@@ -307,10 +328,12 @@ def rho_gsw_tsp(temp, salt, pdep):
 ################################################################################
 ##################### Old routines from CDFtools.f90 ###########################
 ################################################################################
+# note that most of (if not all) these routines work with potential temperature and practical salinity
 
-def bvf2(ds, grid=None, boundary="extrapolate", **kwargs):
+def bvf2_cdftools(ds, grid=None, boundary="extrapolate", **kwargs):
     """ compute Brunt-Vaisala frequency squared
     taken from eosbn2 (from CDFTOOLS function eosbn2 in eos.f90)
+    uses potential temperature and practical salinity
     if z_inv: assume that depth is negative and z-grid oriented downwards while weights are positive
     """
     dico = _parse_inp_dict(kwargs, _defo_dico)
@@ -371,7 +394,7 @@ def sigmai(ds, inv_p=True, **kwargs):
     """ sigmai_tsp: potential density referenced at depth pref
     adapted from CDFTOOLS sigmai_dep2d (in eos.f90)
     Purpose : Compute the  density referenced to pref (ratio rho/rau0) 
-            from potential temperature and salinity fields 
+            from potential temperature and salinity fields
             using an equation of state defined through the amelist parameter neos.
     Internally calls sigmai_tps
 

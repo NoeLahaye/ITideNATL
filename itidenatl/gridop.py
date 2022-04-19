@@ -289,6 +289,29 @@ def corr_zbreath(ds, xgrid, hbot=None, ssh=None, which=None, name=None):
     dfdz = xgrid.interp(xgrid.diff(data, "Z", boundary="extend")/e3z, "Z", boundary="extend")
     return data + dfdz * delz # NB: dfdz=-dfdz because z sorted by increasing depth
 
+def interp_z(da, zi=None, zt=None, xgrid=None, boundary="extrapolate", true_interp=True, e3=None):
+    """ interpolate from one z-grid to another using xgcm. Weighted average if true_interp, otherwise unweighted interpolation (equivalent to mid-point linear interpolation)
+    """
+    if xgrid is None:
+        xgrid = Grid(da, periodic=None)
+    res = xgrid.interp(da, "Z", boundary=boundary)
+    if true_interp:
+        zd = _get_z_dim(da)[-1]
+        if zt is None:
+            tmp = "depth_c_3d" if zd=="w" else "depth_l_3d"
+            zt = da[tmp] if tmp in da else da[tmp[:-3]]
+        if zi is None:
+            tmp = "depth_c_3d" if zd=="t" else "depth_l_3d"
+            zi = da[tmp] if tmp in da else da[tmp[:-3]]
+        if e3 is None:
+            e3 = "e3t" if zd == "w" else "e3w"
+            if e3 in da.coords:
+                e3 = da[e3]
+            else:
+                e3 = zt[e3]
+        res -= (zt - xgrid.interp(zi, "Z", boundary="extrapolate")) * xgrid.diff(da, "Z", boundary="extrapolate") / e3
+    return res
+
 ### derivative routines
 def diff_on_grid(da, dim, grid, upmask=False, diff_before_interp=True):
     """ compute derivative on the same grid
