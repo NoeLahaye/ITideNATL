@@ -12,9 +12,7 @@ def get_pres(ds, ds_gr, ds_gm, grid, with_persist=False, densanom=False):
     """ compute pressure on mean grid from temperature, salinity, grid at rest and mean grid (and SSH)
     hydrostatic pressure is not included
     """
-    sigmai = eos.sigmai_tsp(ds.votemper, ds.vosaline, 
-                            -ds_gm.depth_c_3d, with_persist=with_persist
-                           ).rename("sigmai")#.persist()
+    sigmai = eos.rho_gsw(ds.votemper, ds.vosaline, -ds_gm.depth_c_3d).rename("sigmai")#.persist()
     if densanom: # note: mean sigma not interpolated on instantaneous grid here
         sigmai -= ds_gm.sigmai
 

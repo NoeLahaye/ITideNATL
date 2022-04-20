@@ -321,8 +321,8 @@ def rho_gsw_tsp(temp, salt, pdep):
     # this is not optimal : I should be able to get directly rho - r0 from gsw, since it should be how it is computed. 
     # But this is still faster than rho_insitu above
     r0 = gsw.rho(35.16504, 4, pdep) - gsw.rho(35.16504, 4, 0.)
-    res = gsw.rho(salt, temp, pdep) - r0 - rau0
-    return (res/rau0).astype(temp.dtype)
+    res = (gsw.rho(salt, temp, pdep) - r0)/rau0 - 1.
+    return res.astype(temp.dtype)
 
 
 ################################################################################

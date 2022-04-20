@@ -5,7 +5,7 @@ TODO:
 """
 _pres_dico = dict(ssh=None, var_dens="sigmai", zmet=None, on_t_pts=True, 
                   s_dens_ano=False, red_pres=True, rho0=1026., grav=9.81, 
-                  rechunk=True)
+                  rho_kind="rho_red", rechunk=True)
 
 from .utils import _da_or_ds
 
@@ -19,7 +19,7 @@ def comp_pres(ds, xgrid, **kwargs):
     Parameters
     __________
     ds: xarray Dataset or DataArray
-        dataset containing density - 1000. (for vertical integration)
+        dataset containing in-situ density (for vertical integration)
         May also contain the ssh field and the grid interval
     xgrid: xgcm.Grid
         grid associated with ds. metrics will be used for vertical integration (unless delz is passed)
@@ -28,7 +28,9 @@ def comp_pres(ds, xgrid, **kwargs):
     ssh: str or xarray DataArray or False, optional
         name of ssh field in ds dataset, or xr.DataArray containing ssh, or None (read in ds based on default name) of False (use 0)
     var_dens: str, optional (default: "sigmai")
-        name of density field in ds dataset (assume it is rho-1000)
+        name of density field in ds dataset
+    rho_kind: str, optional
+        type of in-situ density: "rho": total density: "sigmai": rho-1000; "rho_red": reduced density rho/rho0-1 (default)
     s_dens_ano: bool, optional (default: False)
         wether full density (rho0 + anomaly) is used for computing the surface pressure anomaly (at z=0) or not. 
         False is NEMO default
@@ -41,7 +43,6 @@ def comp_pres(ds, xgrid, **kwargs):
     dico = _pres_dico.copy()
     dico.update(kwargs)
     rho0 = dico["rho0"] # pp_rau0 in CDFtools TODO have this from simulation output files
-    sig0 = dico.get("sig0", rho0-1000.)   # rho0 - p_rau0
     grav = dico["grav"]  # TODO use common default with e.g. xorca
     s_dens_ano = int(dico["s_dens_ano"]) # 1 or 0: use density anomaly for surface pressure
     if xgrid.axes["Z"]._periodic:
@@ -50,7 +51,13 @@ def comp_pres(ds, xgrid, **kwargs):
     zmet = dico["zmet"]
     # get density at w points
     #dens = ds[dico["var_dens"]] - sig0 
-    dens = _da_or_ds(ds, dico["var_dens"]) - sig0 # now dens is dens-rho0
+    dens = _da_or_ds(ds, dico["var_dens"])# - sig0 # now dens is dens-rho0
+    if dico["rho_kind"] == "sigma":
+        sig0 = dico.get("sig0", rho0-1000.)   # rho0 - p_rau0
+        dens = (dens - sig0)/rho0
+    elif dico["rho_kind"] == "rho":
+        dens = dens/rho0 - 1.
+
     dens = xgrid.interp(dens, "Z", boundary="fill", fill_value=0) # rho/2 at surface
     
     ### vertical integration of density
@@ -71,16 +78,16 @@ def comp_pres(ds, xgrid, **kwargs):
     if ssh is not False:
         if isinstance(ssh, str):
             ssh = ds[ssh]
-        psurf = ssh * (s_dens_ano*dens.isel(z_l=0)*2. + rho0) # factor 2 because of previous interp
+        psurf = ssh * (s_dens_ano*dens.isel(z_l=0)*2. + 1.) # factor 2 because of previous interp
     else:
         psurf = 0.
     
     # return pressure: multiply by gravity
-    if dico["red_pres"]:
-        grav /= rho0
+    if not dico["red_pres"]:
+        grav *= rho0
     res = grav * (res + psurf)
     res.attrs = {k:dico[k] for k in ["grav","rho0","red_pres"]}
-    res.attrs["sig0"] = sig0
+    #res.attrs["sig0"] = sig0
     return res
 
 def comp_pres_w(ds, xgrid, **kwargs):
