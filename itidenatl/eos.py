@@ -136,7 +136,7 @@ def ts_expan_ratio(ds_or_da, salt=None, pdep=None, inv_p=True, **kwargs):
     _______
     Two xr.DataArray for thermal and haline expansion ratio
 
-    Taken from CDFtools: SUBROUTINE rab_3d( pts, pab )
+    Taken from NEMO: SUBROUTINE rab_3d( pts, pab )
     !!----------------------------------------------------------------------
     !!                 ***  ROUTINE rab_3d  ***
     !!
@@ -241,7 +241,7 @@ def bvf2(ds, grid=None, boundary="extrapolate", **kwargs):
     """
     dico = _parse_inp_dict(kwargs, _defo_dico)
     temp, salt = ds[dico["temp"]], ds[dico["salt"]]
-    zdim, zmetric, zcoord = dico["zdim"], dico["zmet"], dico["zcoord"]
+    zdim, zmetric = dico["zdim"], dico["zmet"]#, dico["zcoord"]
     grav, z_inv = dico["grav"], dico["z_inv"]
     pdep = ds[dico["pref"]]
     if z_inv:

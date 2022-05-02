@@ -31,14 +31,18 @@ from itidenatl.tools import dataio as io
 
 ### Intialize dask (https://mpi.dask.org/en/latest/batch.html)
 from distributed import Client, performance_report
-scratch = Path(os.getenv("SCRATCHDIR"))
+import dask.config
+dask.config.set({"distributed.workers.memory.spill":.8})
+scratch = Path("/work/nlahaye/scratch") #Path(os.getenv("SCRATCHDIR")) # TMP, SCRATCH unavailable
 # method 1: dask-based script
 if True:
     from dask_mpi import initialize
     #initialize(nthreads=4, interface="ib0", memory_limit=21e9, 
     #initialize(nthreads=3, interface="ib0", memory_limit=17e9, 
-    initialize(nthreads=2, interface="ib0", memory_limit=5e9, 
+    initialize(nthreads=4, interface="ib0", memory_limit=5.6e9, 
             dashboard=False, local_directory=scratch)
+    #initialize(nthreads=4, interface="ib0", memory_limit=20e9, 
+            #dashboard=False, local_directory="/tmp")
     client=Client()
 else:
     client = Client(scheduler_file="scheduler.json")
@@ -49,9 +53,9 @@ logging.info("Cluster should be connected -- dashboard at {}".format(client.dash
 ###  ----------------------------------------------------------------------  ###
 
 ### define chunking and computational subdomains (y, t)
-chunks = {"t":1, "z":10, "y":100, "x":-1}
+chunks = {"t":1, "z":30, "y":100, "x":-1}
 chk_store = {"t":-1, "mode":1, "y":400, "x":-1} 
-nk_t = 1 # process nk_t instants at a time (must be a divider of nt_f)
+nk_t = 2 # process nk_t instants at a time (must be a divider of nt_f)
 sk_y = 100 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size)
 if len(sys.argv)>1:
     var = sys.argv[1]
@@ -70,12 +74,12 @@ drop_land_x = True  ### wether to drop land points in x (must be land for every 
 region = {"t":slice(0,None), "x":slice(0,None), "y":slice(0,None)}
 
 ### define paths
-#workdir = Path("/work/CT1/ige2071/nlahaye")
+workdir = Path("/work/CT1/ige2071/nlahaye")
 worksha = Path("/work/CT1/ige2071/SHARED")
 
 #data_path = Path("/work/CT1/hmg2840/lbrodeau/eNATL60")
-grid_uv_path = worksha/"vmodes/phi_{}_10.zarr".format(var)
-grid_mode_path = scratch/"eNATL60_grid_vmodes_proj_pres.zarr" 
+grid_uv_path = workdir/f"eNATL60_grid_vmodes_proj_{var}.zarr"
+grid_mode_path = workdir/"eNATL60_grid_vmodes_proj_pres.zarr" 
 out_dir = worksha/"modal_proj/modamp_{}".format(var)
 out_file = "modamp_{}_global_{}.zarr".format(var, "{}") #.format(date)
 log_dir = Path(os.getenv("HOME"))/"working_on/processing/log_proj_uv"
@@ -105,13 +109,6 @@ for di in ("x", "y"):
     chunks_tg.update({di+"_"+su:chunks[di] for su in ["c","r"]})
 logging.info("finished setting up parameters, starting to load data")
 
-### Load static fields (grid, vmodes, pres...) and select region
-ds_g = xr.open_zarr(grid_uv_path) 
-ds_g = ds_g.chunk({k:v for k,v in chunks_tg.items() if k in ds_g.dims})
-ds_g = ds_g.isel({d:region[d[0]] for d in ds_g.dims if d[0] in region})
-ds_x = xr.open_zarr(grid_mode_path) # need this to get some info on the z_l grid
-logging.info("opened static fields, reading from {}, {}".format(grid_uv_path.name, grid_mode_path.name))
-
 ### open velocity and ssh
 uv_name = {"u":"vozocrtx", "v":"vomecrty"}[var]
 dim_itp = "xy"["uv".index(var)]
@@ -125,10 +122,12 @@ for v in les_var[1:]:
 ds = ds.isel({d:region[d[0]] for d in ds.dims if d[0] in region})
 logging.info("opened velocity and SSH data -- ellapsed time {:.1f} s".format(time.time()-tmes))
 
+### Load static fields (grid, vmodes, pres...) and select region
 # dataset for grid only
+ds_x = xr.open_zarr(grid_mode_path) # need this to get some info on the z_l grid
 ds_xb = ds.get(list(ds.dims.keys())).merge(ds_x.get(list(ds_x.dims.keys()))).reset_coords(drop=True)
 grid = Grid(ds_xb)
-ds_x.close()
+ds_x.close(); del ds_x
 
 # interp ssh
 ds["sossheig"] = grid.interp(ds["sossheig"], dim_itp.upper(), boundary="extend")
@@ -138,8 +137,15 @@ ds["sossheig"] = ds["sossheig"].chunk({dim_itp+"_r":chunks[dim_itp]})
 ###  -----------------  Start Computation  -------------------------------  ###
 ###  ---------------------------------------------------------------------  ###
 
+def open_dg():
+    dg = xr.open_zarr(grid_uv_path) 
+    dg = dg.chunk({k:v for k,v in chunks_tg.items() if k in dg.dims})
+    return dg.isel({d:region[d[0]] for d in dg.dims if d[0] in region})
+
+ds_g = open_dg()
 uvec = get_uv_mean_grid(ds, grid, ds_g)
 amod = proj_puv(uvec, ds_g)
+ds_g.close(); del ds_g
 # store chunks in terms of target dimensions
 chk_store = {d:chk_store[next(k for k in chk_store.keys() if d.startswith(k))] for d in amod.dims}
 amod = amod.chunk(chk_store)
@@ -158,7 +164,9 @@ else:
                       "by": "N. Lahaye (noe.lahaye@inria.fr)", 
                       "date generated": logging.time.asctime(), 
                       "simulation": "eNATL60 (with tides)",
-                      "day of simulation": da, "i_day": i_days[i]
+                      "day of simulation": da, "i_day": i_days[i],
+                      "description": "horizontal velocity modal amplitude: "\
+                                     "projection horizontal velocity on the vertical modes"
                      }
         tmes = time.time()
         slit = slice(i*nt_f,(i+1)*nt_f)
@@ -184,7 +192,8 @@ with performance_report(filename="perf-report_proj-{}_{}.html".format(var,tmp)):
         logging.info("starting y segment # {}".format(jj))
         sliy = slice(ind_y[jj], ind_y[jj+1])
         region[dim_h["y"]] = sliy
-        sds_g = ds_g.isel({d:sliy for d in ds_g.dims if d.startswith("y_")})
+        ds_g = open_dg()
+        sds_g = ds_g.isel({d:sliy for d in ds_g.dims if d.startswith("y_")}).copy()
         sds = ds.isel({d:sliy for d in ds.dims if d.startswith("y_")})
     
         ### here select subdomain
@@ -200,6 +209,7 @@ with performance_report(filename="perf-report_proj-{}_{}.html".format(var,tmp)):
             slix = slice(0,None)
         region[dim_h["x"]] = slix
         sds_g = sds_g.persist()
+        ds_g.close(); del ds_g
         logging.info("persisted sds_g")
         # compute pres and project on vertical modes + clean amod
         uvec = get_uv_mean_grid(sds, grid, sds_g)
@@ -223,7 +233,6 @@ with performance_report(filename="perf-report_proj-{}_{}.html".format(var,tmp)):
         client.restart()
 
 logging.info("  ----  FINISHED  ----  ")
-ds_g.close()
 ds.close()
 
 ### create log file with some information

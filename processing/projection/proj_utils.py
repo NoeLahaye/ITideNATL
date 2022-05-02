@@ -4,66 +4,77 @@ definition of functions (mostly wrappers) used by the pressure modal projection 
  - get_pres for computing the pressure from temperature and salinity
 These are had hoc routines with no genericity of the datasets (e.g. names) ensured
 """
+import xarray as xr
 import itidenatl.eos as eos
 import itidenatl.vars as var
 import itidenatl.gridop as gop
 
-def get_pres(ds, ds_gr, ds_gm, grid, with_persist=False, densanom=False):
+def load_grid_ds(path, chunks=None, region=None):
+    ds = xr.open_zarr(path)
+    if chunks is not None:
+        ds = ds.chunk({k:v for k,v in chunks.items() if k in ds.dims})
+    if region is not None:
+        ds = ds.isel({d:region[d[0]] for d in ds.dims if d[0] in region})
+    return ds
+
+def get_pres(ds, ds_gr, ds_gm, grid):
     """ compute pressure on mean grid from temperature, salinity, grid at rest and mean grid (and SSH)
     hydrostatic pressure is not included
+    WARNING: this version not used any longer
     """
-    sigmai = eos.rho_gsw(ds.votemper, ds.vosaline, -ds_gm.depth_c_3d).rename("sigmai")#.persist()
-    if densanom: # note: mean sigma not interpolated on instantaneous grid here
-        sigmai -= ds_gm.sigmai
-
     ssh_inst = ds.sossheig#.persist()
-    ssh_pert = (ssh_inst-ds_gm.sossheig)#.persist()
+    ssh_moy = ds_gm.sossheig
+    ssh_pert = (ssh_inst - ssh_moy)#.persist()
     hbot = ds_gm.hbot#.persist()
+
+    dep = (ds_gm.depth_c_3d - ssh_moy) * (hbot + ssh_inst) / (hbot + ssh_moy)
+    rhored = eos.rho_gsw_tsp(ds.votemper, ds.vosaline, -dep).rename("rhoinsitu")#.persist()
 
     e3w = gop.get_rec_e3w(ds_gr.e3w, ssh=ssh_inst, hbot=hbot) # e3w inst.
 
     ### compute pressure, with surface pressure on mean z-grid
-    if densanom:
-        pres = var.comp_pres(sigmai, xgrid=grid, ssh=ssh_pert, zmet=e3w, sig0=0.)#.where(ds_gm.tmask)
-    else:
-        pres = var.comp_pres(sigmai, xgrid=grid, ssh=ssh_pert, zmet=e3w)#.where(ds_gm.tmask)
+    pres = var.comp_pres(rhored, xgrid=grid, ssh=ssh_pert, zmet=e3w, 
+                            rho_kind="rho_red"
+                        )#.where(ds_gm.tmask)
     if len(ds.chunks["z_c"]) != 1: # rechunk to initial chunk
         pres = pres.chunk({"z_c":ds.chunks["z_c"][0]})
     ### interpolate baroclinic part on mean grid (only baroclinic contribution)
     if True: # correction due to grid breathing
         delz = gop.get_del_zt(ds_gm.depth_c_3d, ssh=ssh_pert, hbot=hbot)
-        gred = pres.grav/pres.rho0 if pres.red_pres else pres.grav
-        pres += (sigmai-pres.sig0)*gred*delz # use pres.sig0
+        gred = pres.grav if pres.red_pres else pres.grav * pres.rho0
+        pres += rhored * gred * delz # use pres.sig0
     return pres#.where(ds_gm.tmask)#.persist()
 
-def get_pres_one_dg(ds, ds_g, grid, with_persist=False, anom=True):
+def get_pres_one_dg(ds, dg, grid, anom=True):
     """ compute pressure on mean grid from temperature, salinity, grid at rest and mean grid (and SSH)
     hydrostatic pressure is not included
     """
-    sigmai = eos.sigmai_tsp(ds.votemper, ds.vosaline, 
-                            -ds_g.depth_c_m, with_persist=with_persist
-                           ).rename("sigmai")#.persist()
     ssh_inst = ds.sossheig#.persist()
-    ssh_pert = (ssh_inst-ds_g.sossheig)#.persist()
-    hbot = ds_g.hbot#.persist()
+    ssh_moy = dg.sossheig
+    ssh_pert = (ssh_inst - ssh_moy)#.persist()
+    hbot = dg.hbot#.persist()
 
-    e3w = gop.get_rec_e3w(ds_g.e3w_0, ssh=ssh_inst, hbot=hbot) # e3w inst.
+    dep = (dg.depth_c_m - ssh_moy) * (hbot + ssh_inst) / (hbot + ssh_moy)
+    rhored = eos.rho_gsw_tsp(ds.votemper, ds.vosaline, -dep).rename("rhoinsitu")#.persist()
+
+    e3w = gop.get_rec_e3w(dg.e3w_0, ssh=ssh_inst, hbot=hbot) # e3w inst.
 
     ### compute pressure, with surface pressure on mean z-grid
-    pres = var.comp_pres(sigmai, xgrid=grid, ssh=ssh_pert, zmet=e3w)#.where(ds_gm.tmask)
+    pres = var.comp_pres(rhored, xgrid=grid, ssh=ssh_pert, zmet=e3w,
+                         rho_kind="rho_red")
     if len(ds.chunks["z_c"]) != 1: # rechunk to initial chunk
         pres = pres.chunk({"z_c":ds.chunks["z_c"][0]})
     ### interpolate baroclinic part on mean grid (only baroclinic contribution)
     if True: # correction due to grid breathing
-        delz = gop.get_del_zt(ds_g.depth_c_m, ssh=ssh_pert, hbot=hbot)
-        gred = pres.grav/pres.rho0 if pres.red_pres else pres.grav
-        pres += (sigmai-pres.sig0)*gred*delz # use pres.sig0
+        delz = gop.get_del_zt(dg.depth_c_m, ssh=ssh_pert, hbot=hbot)
+        gred = pres.grav if pres.red_pres else pres.grav * pres.rho0
+        pres += rhored * gred * delz # use pres.sig0
     # take anomaly
     if anom:
-        pres -= ds_g.pres_m
+        pres -= dg.pres_m
     # remove singletons
     pres = pres.reset_coords([c for c in pres.coords if len(pres[c].dims)==0], drop=True)
-    return pres.astype(sigmai.dtype)
+    return pres.astype(rhored.dtype)
 
 _proj_keep_coords = {"p":[], "u":[], "v":[]} # ["llon_cc", "llat_cc"]
 _proj_units = {"p":"m^2/s^2", "u":"m/s", "v":"m/s"}
@@ -83,6 +94,14 @@ def proj_pres(pres, ds_g, **kwargs):
     pmod = pmod.astype(pres.dtype).to_dataset(name="pres")
     return pmod
                         
+### wrapper for pressure projection
+def calc_pmod(ds, ds_g, grid):
+    """ just a wrapper """
+    pres = get_pres_one_dg(ds, ds_g, grid)
+    pmod = proj_pres(pres, ds_g)
+    return pmod
+
+### u-v projection
 def get_uv_mean_grid(ds, grid, ds_g=None, **kwargs):
     """ put field on mean grid given instantaneous SSH 
     

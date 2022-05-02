@@ -40,20 +40,21 @@ logging.basicConfig(format='[{}] %(asctime)s -- %(message)s'.format(sys.argv[0])
 logging.info("Cluster should be connected -- dashboard at {}".format(client.dashboard_link))
 ##########################  - - - PARAMETERS  - - -  ############################
 ### define paths
-scratch = Path(os.getenv("SCRATCHDIR"))
+work = Path(os.getenv("WORKDIR"))
 works = Path("/work/CT1/ige2071/SHARED")
 grid_path = scratch #Path("/store/CT1/hmg2840/lbrodeau/eNATL60/eNATL60-I/")
-mean_path = scratch #works/"mean"
+mean_path = work #works/"mean"
 
-avg_type = "30d" # "30d" or "global"
+avg_type = "global" # "30d" or "global"
 avg_date = sys.argv[1] if len(sys.argv)>1 else "20090630" # will be ignored if avg_type is "global"
 app = "_"+avg_date if avg_type == "30d" else ""
 zgrid_fname = f"eNATL60_{avg_type}-mean_z-grid{app}.zarr" 
 strat_fname = f"eNATL60_{avg_type}-mean_bvf{app}.zarr"
 
 zgrid_file = scratch/zgrid_fname
-strat_file = scratch/strat_fname
-out_file = works/f"vmodes/eNATL60_{avg_type}-mean_vmodes{app}.zarr"
+strat_file = work/strat_fname
+#out_file = works/f"vmodes/eNATL60_{avg_type}-mean_vmodes{app}.zarr"
+out_file = work/f"eNATL60_{avg_type}-mean_vmodes{app}.zarr"
 
 ### processing parameters
 nmodes = 10

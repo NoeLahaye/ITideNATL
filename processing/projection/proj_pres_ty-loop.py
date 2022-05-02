@@ -22,11 +22,12 @@ logging.basicConfig(format='[{}] %(asctime)s -- %(message)s'.format(sys.argv[0])
 
 import numpy as np
 
-import xarray as xr
+#import xarray as xr
 from xgcm import Grid
 
-from proj_utils import proj_pres, get_pres_one_dg as get_pres
-import itidenatl.utils as ut
+from proj_utils import calc_pmod, load_grid_ds#, get_pres_one_dg as get_pres
+from itidenatl.tools import files as uf
+from itidenatl.tools import dataio as io
 
 ### Intialize dask (https://mpi.dask.org/en/latest/batch.html)
 from distributed import Client, performance_report
@@ -34,9 +35,9 @@ scratch = Path(os.getenv("SCRATCHDIR"))
 # method 1: dask-based script
 if True:
     from dask_mpi import initialize
-    #initialize(nthreads=4, interface="ib0", memory_limit=21e9, 
-    #initialize(nthreads=2, interface="ib0", memory_limit=11e9, 
-    initialize(nthreads=3, interface="ib0", memory_limit=17e9, 
+    initialize(nthreads=4, interface="ib0", memory_limit=12e9, # 1 BDW node
+    #initialize(nthreads=4, interface="ib0", memory_limit=21e9, # visu
+    #initialize(nthreads=3, interface="ib0", memory_limit=17e9, HSW
             dashboard=False, local_directory=scratch)
     client=Client()
 else:
@@ -50,8 +51,8 @@ logging.info("Cluster should be connected -- dashboard at {}".format(client.dash
 ### define chunking and computational subdomains (y, t)
 chunks = {"t":1, "z":10, "y":100, "x":-1}
 chk_store = {"t":-1, "mode":1, "y":400, "x":-1} 
-nk_t = 3 # process nk_t instants at a time (must be a divider of nt_f)
-sk_y = 200 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size / chunk store)
+nk_t = 1 # process nk_t instants at a time (must be a divider of nt_f)
+sk_y = 100 # process y-subdomains of size sk_y at a time (choose it a multiple of chunk size / chunk store)
 restart = False # continue previously stopped job (y segments). False or None starts from beginning creating a new zarr store
 
 ### read time ("day of simu in data") from sys.argv, or use here-defined value
@@ -65,11 +66,10 @@ drop_land_x = True  ### wether to drop land points in x (must be land for every 
 region = {"t":slice(0,None), "x":slice(0,None), "y":slice(0,None)}
 
 ### define paths
-#workdir = Path("/work/CT1/ige2071/nlahaye")
+workdir = Path("/work/CT1/ige2071/nlahaye")
 worksha = Path("/work/CT1/ige2071/SHARED")
-
 data_path = Path("/work/CT1/hmg2840/lbrodeau/eNATL60")
-grid_mode_path = scratch/"eNATL60_grid_vmodes_proj_pres.zarr" 
+grid_mode_path = workdir/"eNATL60_grid_vmodes_proj_pres.zarr" 
 out_dir = worksha/"modal_proj/modamp_pres"
 out_file = "modamp_pres_global_{}.zarr" #"modamp_subdom_{}.zarr" #.format(date)
 log_dir = Path(os.getenv("HOME"))/"working_on/processing/log_proj_pres"
@@ -82,7 +82,7 @@ log_file = "proj_pres_{}.log" #.format(i_day)
 nt_f = 24 # time instant per file
 assert nt_f%nk_t == 0 and sk_y%chunks["y"] == 0
 ### get date (day) and check for existing log files
-sim_dates = ut.get_date_from_iday(i_days)
+sim_dates = uf.get_date_from_iday(i_days)
 for da in sim_dates:
     if (log_dir/log_file.format(da)).exists():
         raise ValueError("{} already processed? found corresponding log file".format(da))
@@ -99,26 +99,23 @@ for di in ("x", "y"):
     chunks_tg.update({di+"_"+su:chunks[di] for su in ["c","r"]})
 logging.info("finished setting up parameters, starting to load data")
 
-### Load static fields (grid, vmodes, pres...) and select region
-ds_g = xr.open_zarr(grid_mode_path)
-ds_g = ds_g.chunk({k:v for k,v in chunks_tg.items() if k in ds_g.dims})
-ds_g = ds_g.isel({d:region[d[0]] for d in ds_g.dims if d[0] in region})
-logging.info("opened static fields, reading from {}".format(grid_mode_path.name))
-
 ### open temperature, salinity and ssh
 les_var = ["vosaline", "votemper"]
 v = les_var[0]
 tmes = time.time()
-ds = ut.open_one_var(ut.get_eNATL_path(v, i_days), chunks=chunks, varname=v)
+ds = io.open_one_var(uf.get_eNATL_path(v, i_days), chunks=chunks, varname=v)
 for v in les_var[1:]:
-    ds = ds.merge(ut.open_one_var(ut.get_eNATL_path(v,i_days), chunks=chunks, varname=v))
+    ds = ds.merge(io.open_one_var(uf.get_eNATL_path(v,i_days), chunks=chunks, varname=v))
 # Load SSH 
 v = "sossheig"
-dssh = ut.open_one_var(ut.get_eNATL_path(v, i_days), chunks=chunks, varname=v)
+dssh = io.open_one_var(uf.get_eNATL_path(v, i_days), chunks=chunks, varname=v)
 ds = ds.merge(dssh.reset_coords(drop=True), join="inner")
 ds = ds.isel({d:region[d[0]] for d in ds.dims if d[0] in region})
 logging.info("opened T, S and SSH data -- ellapsed time {:.1f} s".format(time.time()-tmes))
 
+### Load static fields (grid, vmodes, pres...) and select region
+ds_g = load_grid_ds(grid_mode_path, chunks=chunks_tg, region=region)
+logging.info("opened static fields, reading from {}".format(grid_mode_path.name))
 ### create xgcm grid
 grid = Grid(ds_g, periodic=False)
 
@@ -126,8 +123,10 @@ grid = Grid(ds_g, periodic=False)
 ###  -----------------  Start Computation  -------------------------------  ###
 ###  ---------------------------------------------------------------------  ###
 
-pres = get_pres(ds, ds_g, grid, with_persist=False)
-pmod = proj_pres(pres, ds_g)
+#pres = get_pres(ds, ds_g, grid)
+#pmod = proj_pres(pres, ds_g)
+pmod = calc_pmod(ds, ds_g, grid)
+ds_g.close()
 # store chunks in terms of target dimensions
 chk_store = {d:chk_store[next(k for k in chk_store.keys() if d.startswith(k))] for d in pmod.dims}
 pmod = pmod.chunk(chk_store)
@@ -138,9 +137,9 @@ if not (restart is None or restart is False):
     logging.info("continuing previous job at iy={}, will append in zarr archives".format(restart))
 else:
     for i,da in enumerate(sim_dates): 
-        from_files = ", ".join([str(grid_mode_path), str(ut.get_eNATL_path("votemper", i_days[i])), 
-                               str(ut.get_eNATL_path("vosaline", i_days[i])),
-                                str(ut.get_eNATL_path("sossheig", i_days[i]))
+        from_files = ", ".join([str(grid_mode_path), str(uf.get_eNATL_path("votemper", i_days[i])), 
+                               str(uf.get_eNATL_path("vosaline", i_days[i])),
+                                str(uf.get_eNATL_path("sossheig", i_days[i]))
                                ])
         pmod.attrs = {"from_files": from_files, "generating_script": sys.argv[0], 
                       "by": "N. Lahaye (noe.lahaye@inria.fr)", 
@@ -170,27 +169,29 @@ with performance_report(filename="perf-report_proj-pres_{}.html".format(tmp)):
     for jj in range(restart,len(ind_y)-1):
         logging.info("starting y segment # {}".format(jj))
         sliy = slice(ind_y[jj], ind_y[jj+1])
-        region["y_c"] = sliy
-        sds_g = ds_g.isel({d:sliy for d in ds_g.dims if d.startswith("y_")})
+        ds_g = load_grid_ds(grid_mode_path, chunks=chunks_tg)
+        sds_g = ds_g.isel({d:sliy for d in ds_g.dims if d.startswith("y_")}).copy()
         sds = ds.isel({d:sliy for d in ds.dims if d.startswith("y_")})
+        region["y_c"] = sliy
     
         ### here select subdomain
         if drop_land_x:
             index = sds_g.x_c.where(sds_g.tmaskutil.max("y_c"), drop=True)
             slix = slice((int(index.x_c[0]-1)//chk_x)*chk_x, int(index.x_c[-1]))
-            sds_g = sds_g.isel({d:slix for d in sds_g.dims if d.startswith("x_")})
+            sds_g = sds_g.isel({d:slix for d in ds_g.dims if d.startswith("x_")})
             sds = sds.isel({d:slix for d in sds.dims if d.startswith("x_")})
             logging.info("x subdomain from {} to {}, size {}".format(
                           slix.start, slix.stop, slix.stop-slix.start)
                         )
         else:
             slix = slice(0,None)
-        region["x_c"] = slix
         sds_g = sds_g.persist()
+        ds_g.close()
+        region["x_c"] = slix
         logging.info("persisted sds_g")
-        # compute pres and project on vertical modes + clean pmod
-        pres = get_pres(sds, sds_g, grid, with_persist=False)
-        pmod = proj_pres(pres, sds_g).chunk({"y_c":chk_store["y_c"]})
+        ## compute pres and project on vertical modes + clean pmod
+        #pres = get_pres(sds, sds_g, grid, with_persist=False)
+        #pmod = proj_pres(pres, sds_g).chunk({"y_c":chk_store["y_c"]})
     
         ### loop in time for computing and storing
         logging.info("starting time loop")
@@ -200,7 +201,8 @@ with performance_report(filename="perf-report_proj-pres_{}.html".format(tmp)):
             slit = slice(it*nk_t,(it+1)*nk_t)
             region["t"] = slice( (it*nk_t)%nt_f, ((it+1)*nk_t-1)%nt_f + 1 )
             da = sim_dates[(it*nk_t)//nt_f]
-            pmod.isel(t=slit).chunk({"t":-1}).to_zarr(out_dir/out_file.format(da), mode="a", 
+            pmod = calc_pmod(sds.isel(t=slit), sds_g, grid).chunk({"y_c":chk_store["y_c"], "t":-1})
+            pmod.to_zarr(out_dir/out_file.format(da), mode="a", 
                                                       compute=True, region=region, safe_chunks=False
                                                      )
             logging.info("iteration y={}, t={}, ellapsed time {:.1f} s".format(jj, it, time.time()-tmes))

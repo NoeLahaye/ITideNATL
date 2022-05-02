@@ -13,7 +13,7 @@ def comp_pres(ds, xgrid, **kwargs):
     """ compute pressure anomaly by vertical integration of local in-situ density
     density interpolated on w-points, then integration goes from w -> T levels (implementation close to NEMO code)
     Pressure is computed by vertically integrating density: psurf + int_z \rho dz',
-    with \rho=sigma_i (= potential density - 1000), and psurf = rho0 * ssh (+ dens ano if not variable-volume and s_dens_ano is True)
+    with \rho the reduced in-situ density (rho/rho0-1), and psurf = ssh (+ dens ano if not variable-volume and s_dens_ano is True)
     adapted to variable volume formulation (enforced if zmet explicitly passed as an xarray)
 
     Parameters
@@ -49,15 +49,14 @@ def comp_pres(ds, xgrid, **kwargs):
         print("warning: xgrid is periodic in z, computation will very likely be wrong or NaNs")
     
     zmet = dico["zmet"]
-    # get density at w points
+    # get reduced density rho/rho0-1 at w points
     #dens = ds[dico["var_dens"]] - sig0 
-    dens = _da_or_ds(ds, dico["var_dens"])# - sig0 # now dens is dens-rho0
+    dens = _da_or_ds(ds, dico["var_dens"]) 
     if dico["rho_kind"] == "sigma":
         sig0 = dico.get("sig0", rho0-1000.)   # rho0 - p_rau0
         dens = (dens - sig0)/rho0
     elif dico["rho_kind"] == "rho":
         dens = dens/rho0 - 1.
-
     dens = xgrid.interp(dens, "Z", boundary="fill", fill_value=0) # rho/2 at surface
     
     ### vertical integration of density

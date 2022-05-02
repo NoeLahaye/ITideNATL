@@ -11,6 +11,7 @@
 #SBATCH -e outjob_proj_VAR.e%j
 #SBATCH -o outjob_proj_VAR.o%j
 #SBATCH --exclusive
+#SBATCH --switches=1@120
 #SBATCH --mail-user=noe.lahaye@inria.fr # Receive e-mail from slurm
 #SBATCH --mail-type=END # Type of e-mail from slurm; other options are: Error, Info.
 
@@ -30,7 +31,8 @@ i_day=I_DAY
 bis=BIS
 if [ VAR == "p" ]; then
     var=""
-    prog_name=proj_pres_ty-loop${bis}.py
+    #prog_name=proj_pres_ty-loop${bis}.py
+    prog_name=proj_pres_custdist.py
 else
     var=VAR
     prog_name=proj_uv_ty-loop${bis}.py
@@ -40,6 +42,10 @@ prog_work=${prog_name%".py"}.$SLURM_JOBID.py
 cp $prog_name $prog_work
 echo "running" $prog_work "for VAR, using" $SLURM_NNODES" nodes, "$nmpi" tasks, "$SLURM_CPUS_PER_TASK" cpu/task"
 
-srun --mpi=pmi2 -n $nmpi python $prog_work $var $i_day
+if [ VAR == "p" ]; then
+    srun --mpi=pmi2 -n $nmpi python $prog_work $i_day
+else
+    srun --mpi=pmi2 -n $nmpi python $prog_work $var $i_day
+fi
 echo "finished" `date`
 

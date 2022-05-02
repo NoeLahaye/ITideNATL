@@ -4,15 +4,15 @@
 import subprocess
 #from time import sleep
 
-var = "v" #["u", "v"] # "p", "u", "v" or list of several
+var = ["u", "v"] # "p", "u", "v" or list of several
 bis = "" #".ter" # "" # ".bis" # ".ter"
-i_day = range(230, 231+1) #range(168, 168+1) #[19, 20] #range(7,29)
-cluster_conf = {"p": {"NBODES":2, "TASKPNODE":8, "CPUPTASK":3},
+i_day = range(244, 244+1) #range(168, 168+1) #[19, 20] #range(7,29)
+cluster_conf = {"p": {"NBODES":2, "TASKPNODE":7, "CPUPTASK":8},
                 "u": {"NBODES":1, "TASKPNODE":14, "CPUPTASK":2},
                 "v": {"NBODES":1, "TASKPNODE":14, "CPUPTASK":2}
                 }
 time = "auto" # str "hh:mm:ss" or float (hours) or "auto"
-do_chain = True  #run job one after another. False or True or "times"
+do_chain = False #True  #run job one after another. False or True or "times"
 
 file_in = f"job_proj_temp.sh"
 file_out = "job_proj_{}_{}.sh"
@@ -32,7 +32,7 @@ for it in i_day:
     for va in var:
         dico.update({k:str(v) for k,v in cluster_conf[va].items()})
         if time == "auto":
-            tim = 6. if va == "p" else 3.
+            tim = 8. if va == "p" else 4.
             tim /= cluster_conf[va]["NBODES"]
         else:
             tim = time
