@@ -4,12 +4,19 @@ At this stage, most routines are for vertical grid operations, and in particular
 configuration (grid breathing) due to SSH, with z-level formulation (partial step and full step -- not checked)
 """
 import numpy as np
-import dask.array as dr
+#import dask.array as dr
 import xarray as xr
+from xgcm import Grid
 
 from xorca.orca_names import z_dims
+from .tools import misc as ut
 
-from .utils import _parse_name_dict, _da_or_ds
+# miscellaneous local routines
+_name = {"et":"e3t", "ew":"e3w", "ssh":"sossheig", "mask":"tmask",
+        "zt":"depth_c", "zw":"depth_l"}
+def _parse_name_dict(dico, special=None):
+    """ wrapper of parse_inp_dict to use _name dict as default"""
+    return ut.parse_inp_dict(dico, _name, special)
 
 # grid related utilitaries. see also in tools.misc.py
 def _get_z_dim(data):
@@ -117,7 +124,7 @@ def get_del_e3z(ds, which=None, ssh=None, hbot=None, name=None):
     if hbot is None:
         hbot = get_hbot(ds, name=name)
         
-    return _da_or_ds(ds,nam) * ssh / hbot
+    return ut.ds_to_da(ds,nam) * ssh / hbot
 
 def get_del_e3t(ds, **kwargs):
     """ get grid metrics perturbation at t-level from xarray Dataset or DataArray 
@@ -165,7 +172,7 @@ def get_rec_e3z(ds, which=None, ssh=None, hbot=None, name=None):
     if hbot is None:
         hbot = get_hbot(ds, name=name)
         
-    return _da_or_ds(ds,nam) * (1. + ssh / hbot)
+    return ut.ds_to_da(ds,nam) * (1. + ssh / hbot)
         
 def get_rec_e3t(ds, **kwargs):
     """ get perturbated grid metrics at t-level from xarray Dataset or DataArray 
@@ -216,7 +223,7 @@ def get_del_zlev(ds, which=None, ssh=None, hbot=None, name=None):
     if hbot is None:
         hbot = get_hbot(ds, name=name)
     
-    return comp_delz_ssh(hbot + _da_or_ds(ds,nam), ssh, hbot)
+    return comp_delz_ssh(hbot + ut.ds_to_da(ds,nam), ssh, hbot)
         
 def get_del_zt(ds, **kwargs):
     """ compute vertical level perturbation at T-levels, due to SSH.
@@ -272,7 +279,7 @@ def corr_zbreath(ds, xgrid, hbot=None, ssh=None, which=None, name=None):
      - implement using metrics from grid object instead of searching for e3t or e3w
     """
     name = _parse_name_dict(name)
-    data = _da_or_ds(ds, which)
+    data = ut.ds_to_da(ds, which)
     zdim = _get_z_dim(data)
     if zdim:
         nam = name["ew"] if zdim=="z_c" else name["et"] # inverted
