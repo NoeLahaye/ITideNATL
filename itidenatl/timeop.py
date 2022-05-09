@@ -106,10 +106,12 @@ def iir_filter_wrapper(da, Wn, btype, **kwargs):
             mask = da[masklist[0]]
     if mask is not None:
         data = da.where(mask, 0.)
+    else:
+        data = da
     
     # pre-process data
     if btype[:3] != "low": # remove mean for band-pass or high-pass filtering (maybe useful near edges? -- actually not sure...)
-        data = data - data.mean(dim)
+        data -= data.mean(dim)
     # kwargs passed to apply_ufunc
     au_kwargs = dict(dask="parallelized", output_dtypes=[data.dtype])
     
@@ -153,7 +155,7 @@ def iir_filter(da, btype, fcut=1., fwidth=.2, dt=1., **kwargs):
     fcut: float, default=1.
         frequency cutoff
     fwidth: float, optional
-        relative bandwith for bandpass filter (ignored for other types of filters). Default: .2. 
+        fractional bandwith for bandpass filter (ignored for other types of filters). Default: .2. 
         Bandwidth is fcut*fwidth
     dt: float, default=1.
         time step of input time series
@@ -185,17 +187,17 @@ def iir_filter(da, btype, fcut=1., fwidth=.2, dt=1., **kwargs):
     Wn = 2. * dt * fcut
     if btype[:4]=="band":
          Wn += Wn * fwidth/2. * np.array([-1, 1]) # algebraic symmetry
-         Wn *= np.array([ (1+fwidth/2.)**(-1), 1+fwidth/2. ]) # geometric symmetry
+         #Wn *= np.array([ (1+fwidth/2.)**(-1), 1+fwidth/2. ]) # geometric symmetry
     dico = ut.parse_inp_dict(kwargs, _dico_iirfilt)
     res = iir_filter_wrapper(da, Wn, btype, **dico)
     res.attrs.update(dict(filt_btype=btype, filt_fcut=fcut, filt_tcut=1./fcut))
     if btype[:4]=="band":
         res.attrs["filt_bandwidth_abs"] = fwidth * fcut
-        res.attrs["filt_bandwidth_rel"] = fwidth 
+        res.attrs["filt_bandwidth_frac"] = fwidth 
     return res
 
 #######################  - - -   complex demodulation   - - -  #######################
-_dico_demod = dict(coord=None, dim="t", fcut_rel=1./6, 
+_dico_demod = dict(coord=None, dim="t", fcut_rel=1./5, 
                     tref=np.datetime64("2009-06-30T00:30"),
                     subsample=False, subsample_rel=1./3, offset="auto",
                     interp_reco_method="quadratic"
