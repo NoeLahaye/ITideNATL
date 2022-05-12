@@ -309,6 +309,13 @@ def rho_gsw(ds, inv_p=True, **kwargs):
         res = res.where(ds.tmask)
     return res
 
+def rho_base_gsw(pdep):
+    """ compute basic vertical profile of density at depth pdep
+    TEOS-10, see [Roquet et al 2015]
+    """
+    r0 = gsw.rho(35.16504, 4., pdep) - gsw.rho(35.16504, 4., 0.)
+    return r0
+
 def rho_gsw_tsp(temp, salt, pdep):
     """ wrapper around gsw.rho to compute the in-situ density from conservative temperature and absolute salinity (TEOS-10). 
     A mean vertical profile is subtracted to recoevr the same behaviour as NEMO implementation.
@@ -320,7 +327,7 @@ def rho_gsw_tsp(temp, salt, pdep):
     """
     # this is not optimal : I should be able to get directly rho - r0 from gsw, since it should be how it is computed. 
     # But this is still faster than rho_insitu above
-    r0 = gsw.rho(35.16504, 4, pdep) - gsw.rho(35.16504, 4, 0.)
+    r0 = rho_base_gsw(pdep)
     res = (gsw.rho(salt, temp, pdep) - r0)/rau0 - 1.
     return res.astype(temp.dtype)
 
