@@ -121,7 +121,7 @@ def open_one_coord(path, varname, chunks=None, verbose=False):
     return res.rename({nam:varname})
 
 def _prep_to_zarr(ds_or_da, drop_coords=True):
-    ds = ut._ds_or_da_to_ds(ds_or_da)
+    ds = ut._da_to_ds(ds_or_da)
     ds = _rm_encoding_chunks(ds)
     ds = _singletons_as_attrs(ds)
     if drop_coords:

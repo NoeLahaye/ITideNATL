@@ -124,7 +124,7 @@ def get_del_e3z(ds, which=None, ssh=None, hbot=None, name=None):
     if hbot is None:
         hbot = get_hbot(ds, name=name)
         
-    return ut.ds_to_da(ds,nam) * ssh / hbot
+    return ut._ds_to_da(ds,nam) * ssh / hbot
 
 def get_del_e3t(ds, **kwargs):
     """ get grid metrics perturbation at t-level from xarray Dataset or DataArray 
@@ -172,7 +172,7 @@ def get_rec_e3z(ds, which=None, ssh=None, hbot=None, name=None):
     if hbot is None:
         hbot = get_hbot(ds, name=name)
         
-    return ut.ds_to_da(ds,nam) * (1. + ssh / hbot)
+    return ut._ds_to_da(ds,nam) * (1. + ssh / hbot)
         
 def get_rec_e3t(ds, **kwargs):
     """ get perturbated grid metrics at t-level from xarray Dataset or DataArray 
@@ -223,7 +223,7 @@ def get_del_zlev(ds, which=None, ssh=None, hbot=None, name=None):
     if hbot is None:
         hbot = get_hbot(ds, name=name)
     
-    return comp_delz_ssh(hbot + ut.ds_to_da(ds,nam), ssh, hbot)
+    return comp_delz_ssh(hbot + ut._ds_to_da(ds,nam), ssh, hbot)
         
 def get_del_zt(ds, **kwargs):
     """ compute vertical level perturbation at T-levels, due to SSH.
@@ -279,7 +279,7 @@ def corr_zbreath(ds, xgrid, hbot=None, ssh=None, which=None, name=None):
      - implement using metrics from grid object instead of searching for e3t or e3w
     """
     name = _parse_name_dict(name)
-    data = ut.ds_to_da(ds, which)
+    data = ut._ds_to_da(ds, which)
     zdim = _get_z_dim(data)
     if zdim:
         nam = name["ew"] if zdim=="z_c" else name["et"] # inverted
