@@ -1,12 +1,39 @@
 """ timeop.py: various time operation for analysis of eNATL60 outputs
-time filtering (wrapping IIR scipy.signal filters through xarray.aply_ufunc) and complex demodulation
+ - time filtering (wrapping IIR scipy.signal filters through xarray.aply_ufunc) 
+ - complex demodulation
+ - correlation
+ - harmonic fit
+
 WARNING: in the routines, not all configurations of input optional parameters have ben tested
 NJAL May 2022
 """
 import numpy as np
 import scipy.signal as sig
+from scipy.optimize import least_squares
 import xarray as xr
 from .tools import misc as ut
+
+### local constants, dict, etc.
+
+_freq_cpdmod = 1. / 12.2 # complex demodulation frequency, cph
+_tide_period_h = {"M2": 12.42, "S2": 12.00, "N2": 12.66, "K2": 11.96}
+_fcomp = ["M", "S", "N", "K"]
+_t_ref = np.datetime64("2009-06-30T00:30:00")
+
+def get_delom(om, om_ref=2*np.pi*_freq_cpdmod):
+    """ difference between 2 frequencies """
+    return om - om_ref
+
+_delom_dict = {k: get_delom(2*np.pi/_tide_period_h[f"{k}2"]) for k in _fcomp}
+
+_dico_iirfilt = dict(order=4, dim="t", routine="sosfiltfilt", 
+                    subsample=False, offset="auto")
+
+_dico_demod = dict(coord=None, dim="t", fcut_rel=1./5, 
+                    tref=_t_ref,
+                    subsample=False, subsample_rel=1./3, offset="auto",
+                    interp_reco_method="quadratic"
+                  )
 
 ###########################   - - -  Utilitary  - - -   ########################
 def datetime_to_dth(ds_or_da, t_name="t", t_ref=None, it_ref=0):
@@ -45,9 +72,23 @@ def datetime_to_dth(ds_or_da, t_name="t", t_ref=None, it_ref=0):
                 }
     return dth
 
+#######################  - - -   detrending   - - -  #######################
+def detrend_dim(da, dim, deg=1):
+    """detrend along a single dimension
+    taken from https://gist.github.com/rabernat/1ea82bb067c3273a6166d1b1f77d490f
+    modify to take into account complex values -- fitting real and imag separately
+    but why da.polyfit does not work with complex values, while np.polyfit does? """
+    p = da.polyfit(dim=dim, deg=deg)
+    fit = xr.polyval(da[dim], p.polyfit_coefficients)
+    res = da - fit
+    if da.dtype.kind == "c":
+        p_i = da.imag.polyfit(dim=dim, deg=deg)
+        fit_i = xr.polyval(da[dim], p_i.polyfit_coefficients)
+        res -= 1.j * fit_i
+    return res
+
+
 #######################  - - -   time filtering   - - -  #######################
-_dico_iirfilt = dict(order=4, dim="t", routine="sosfiltfilt", 
-                    subsample=False, offset="auto")
 
 def iir_filter_wrapper(da, Wn, btype, **kwargs):
     """ wrapper for dask/xarray of scipy.signal Infinite Impulse Response filtering routines
@@ -197,13 +238,8 @@ def iir_filter(da, btype, fcut=1., fwidth=.2, dt=1., **kwargs):
     return res
 
 #######################  - - -   complex demodulation   - - -  #######################
-_dico_demod = dict(coord=None, dim="t", fcut_rel=1./5, 
-                    tref=np.datetime64("2009-06-30T00:30"),
-                    subsample=False, subsample_rel=1./3, offset="auto",
-                    interp_reco_method="quadratic"
-                  )
 
-def complex_demod(da, fdemod, **kwargs):
+def complex_demod(da, fdemod=_freq_cpdmod, **kwargs):
     """ perform complex demodulation of a DataArray, running a lowpass filter on 
     the time series multiplied by the phase term at minus the targeted frequency.
     The result is multiplied by 2, so that the reconstructed signal is Re(A_cpdmod * exp(i*omega*(t-tref))
@@ -214,8 +250,8 @@ def complex_demod(da, fdemod, **kwargs):
     __________
     da: xr.DataArray
         time series on which to perform complex demodulation
-    fdemod: float
-        frequency of complex demodulation in cycle/hour
+    fdemod: float, optional; default=_freq_cpdmod
+        frequency of complex demodulation in cycle/hour.
 
     Other Parameters
     ________________
@@ -334,3 +370,299 @@ def reco_cpdmod(da, newt=None, newdth=None, **kwargs):
     reco = ( newda * exp_omt ).real.rename(da.name.replace("cpdmod", "cpdrec"))
     reco.attrs = da.attrs.copy()
     return reco
+
+
+#######################  - - -   correlation & co.   - - -  #######################
+def wrap_correlate(da1, da2=None, detrend=False, mode="same", maxlag=None):
+    """ numpy-based, 1D wrapper of scipy.signal.correlate for computing the (cross)correlation
+
+    if maxlag is specified and mode is "valid", compute positive lag cross-correlation with max-lag over fully overlapping windows
+    no border effect.
+
+    Result is not normalized (i.e. corr(lag=0) = mean(da1*da2.conj()) )
+
+    Parameters
+    __________
+        da1: 1D array, size (N,), (M,)
+        da2: 1D array, size N, optional
+        detrend: bool, optional, default: False
+            apply detrending before computing the correlation.
+            WARNING: Won't work from within aply_ufunc
+        mode: str {"valid", "same", "full"}
+            mode for computing the convolution product. Default is "same"
+        maxlag: int (default:None)
+            maximum lag computed.
+
+    Returns:
+    ________
+        1D array of size (maxlag + 1 if mode is 'valid', min(N,M) otherwise.
+            cross-correlation between da1 and da2, or autocorrelation of da1
+    """
+    if detrend:
+        da1 = sig.detrend(da1, axis=-1, type="linear")
+        if da2 is not None:
+            da2 = sig.detrend(da2, axis=-1, type="linear")
+    if da2 is None:
+        da2 = da1
+
+    if mode == "valid" and maxlag is not None:
+        da1 = da1[maxlag:]
+
+    res = sig.correlate(da1, da2, mode=mode, method="auto")
+    if mode != "valid":
+        res = res[res.size//2:]
+    return res
+
+
+def correlation(v1, v2=None, dim="t", mode="same", **kwargs):
+    """
+    compute cross- (or auto-) correlation between two DataArrays v1 and v2.
+    Wrapper of numpy.correlate for xarray.DataArrays using xarray.apply_ufunc.
+    This implementation is not optimal since it vectorizes over every ther dimension that
+    the one along which correlation is computed
+
+    Parameters
+    ----------
+
+        v1, v2: ndarray, pd.Series
+            Time series to correlate, the index must be time if coord is not provided
+
+        dim: str (default: "t")
+            name of coordinate along which correlation is performed
+
+        mode: str, optional (default: "same")
+            "same", "valid" or "full" -- see correlate or convolve docstring
+
+        dt: float, optional
+            value of increment along coord, used to compute lags
+            Will use corresponding coordinate if not specified
+
+        detrend: boolean, optional. Default: False
+            Linear detrend data before computing correlation.
+
+        maxlag: float, optional
+            if mode=="valid", maximum timelag to compute.
+            The first time series v1 will be cropped by the corresponding number of elements
+
+        normalize: boolean, optional (default: False)
+            normalize result by variance (otherwise by time series duration)
+
+    Returns:
+    ________
+        da_corr: xr.Datarray containing the correlation function,
+        with (only positive) lags as coordinate
+
+    """
+
+    assert dim in v1.dims
+    indtype = [v1.dtype.kind]
+
+    if v2 is not None:
+        assert dim in v2.dims
+        indtype.append(v2.dtype.kind)
+    coord = v1[dim]
+
+    letype = np.complex64 if "c" in indtype else np.float32
+
+    dt = kwargs.pop("dt", None)
+    if not dt:
+        dt = coord.diff(dim).mean()
+        if dt.dtype != "float":
+            dt = float(dt.dt.seconds/3600.)
+            units = "h"
+        else:
+            units = dt.attrs.pop("units", None)
+            dt = float(dt)
+    else:
+        units = dt.attrs.pop("units", None)
+
+    maxlag = kwargs.pop("maxlag", None)
+    if maxlag is None:
+        nlag = coord.size//2
+    elif isinstance(maxlag, float):
+        nlag = int(maxlag//dt) + 1
+    elif isinstance(maxlag, int):
+        nlag = maxlag + 1
+    else:
+        raise ValueError(f"unable to parse maxlag value '{maxlag}'")
+
+    if kwargs.pop("detrend", False):
+        v1 = detrend_dim(v1, dim)
+        if v2 is not None:
+            v2 = detrend_dim(v2, dim)
+
+    args = (v1, v2) if v2 is not None else (v1, )
+    kwgs = {"mode":mode, "maxlag":maxlag}
+
+    res = xr.apply_ufunc(wrap_correlate, *args,
+                        dask="parallelized",  vectorize=True,
+                        input_core_dims=[[dim]]*len(args), output_core_dims=[["lag"]],
+                        output_dtypes=[letype], kwargs=kwgs,
+                        dask_gufunc_kwargs={"output_sizes":{"lag": nlag}}
+                       )
+    try:
+        if v2 is None:
+            namout = "corr_{0}".format(v1.name)
+        else:
+            namout = "corr_{0}-{1}".format(v1.name, v2.name)
+    except:
+        namout = "corr"
+
+    res = res.assign_coords(lag = np.arange(nlag) * dt).rename(namout)
+    res.lag.attrs["units"] = units
+
+    if kwargs.pop("normalize", False):
+        res /= (v1 * v2.conj()).real.sum()
+    else:
+        norm = coord.size
+        if mode=="valid": norm -= nlag - 1
+        res /= norm
+
+    return res
+
+#######################  - - -   harmonic fit   - - -  #######################
+# for complex time series -- not tested on a real time series
+
+### functions for performing the harmonic fit
+def harmo(amp, dom, t):
+    """ harmonic time series with complex amplitude 'amp',
+    frequency (rad/units(h)) 'dom' and evaluated at time 't'
+    returns amp * exp(i*dom*t)
+    """
+    return amp * np.exp(1.j*dom*t)
+
+def _fitfunc(p, t, oms):
+    res = harmo(p[0], oms[0], t)
+    for i in range(1,len(p)):
+        res += harmo(p[i], oms[i], t)
+    return res
+
+def _errfunc(p, t, y, oms):
+    """ error between harmonic time series and input data
+    work with 1D numpy arrays
+
+    parameters
+    __________
+        p: iterable of complex numbers, fit parameters (complex amplitude)
+        t: 1D array, time
+        y: 1D array, data
+        oms: iterable of float, harmonic frequencies
+    """
+    res = harmo(p[0], oms[0], t)
+    for i in range(1,len(p)):
+        res += harmo(p[i], oms[i], t)
+    return res - y
+
+def _wrap_err(p, t, y, oms):
+    """ wrapper of _errfunc, going from complex numbers to 2 real time series """
+    p = np.array([p[2*k] + 1.j*p[2*k+1] for k in range(len(p)//2)])
+    res = _errfunc(p, t, y, oms)
+    return np.r_[res.real, res.imag]
+
+def _jac(p, t, y, oms):
+    """ jacobian for the harmonic fit, casted in complex expanded to 2 real time series
+    """
+    Nt = t.size
+    J = np.zeros((Nt*2, p.size))
+    for k in range(p.size//2):
+        res = harmo(1, oms[k], t)
+        J[:,2*k] = np.r_[res.real, res.imag]
+        J[:,2*k+1] = np.r_[-res.imag, res.real]
+    return J
+
+def _wrap_fit(yy, tt, oms, ferr, fjac):
+    No = len(oms)
+    if not np.isnan(yy).all():
+        if False:
+            p0 = np.c_[np.ones(No), np.zeros(No)].ravel()
+        else:
+            p0 = (yy[None,:] * np.exp(-1.j*np.array(oms)[:,None]*tt[None,:])
+                 ).mean(axis=-1)
+            p0 = np.c_[p0.real, p0.imag].ravel()
+        try:
+            res = least_squares(ferr, p0, jac=fjac, args=(tt,yy))
+            pout = np.array([res.x[2*i] + 1.j*res.x[2*i+1]
+                             for i in range(No)]
+                           ).astype("complex64")
+            rms_tot = (yy*yy.conj()).real.mean()**.5
+            yr = yy - _fitfunc(pout, tt, oms)
+            rms_res = (yr*yr.conj()).real.mean()**.5
+        except:
+            print("failed")
+            pout = np.zeros(No)+0.j+np.nan
+            rms_tot, rms_res = 0.j+np.nan, 0.j+np.nan
+        return np.r_[pout, rms_tot, rms_res]
+    else:
+        return np.ones(No+2)*np.nan
+
+def harmonic_fit(da, oms=_delom_dict, mask=None):
+    """ compute harmonic fit at frequencies 'oms' on input DataArray 'da'
+
+    wrap scipy.optimze.least_square using xr.apply_ufunc
+
+    Parameters
+    __________
+        da: xr.DataArray
+            input complex-value ddata time series
+            must contain dimension 't' and coordinate 't_ellapse'
+        oms: dict or list of float
+            frequencies for harmonic fit (with labels as dict keys)
+
+    Returns
+    _______
+        xr.Dataset containing the complex harmonic amplitudes,
+            associated RMS and RMS of residual
+    """
+
+    if isinstance(oms, dict):
+        fname = list(oms.keys())
+        oms = [oms[k] for k in fname]
+    else:
+        fname = None
+
+    n_out = 2+len(oms)
+
+    da = da.chunk({"t":-1})
+
+    ferr = lambda p,t,y: _wrap_err(p, t, y, oms)
+    fjac = lambda p,t,y: _jac(p, t, y, oms)
+    wrap_fit = lambda y, t: _wrap_fit(y, t, oms, ferr, fjac)
+
+    res = xr.apply_ufunc(wrap_fit, da, da.t_ellapse,
+                        input_core_dims=[["t"], ["t"]], output_core_dims=[["stack"]],
+                         vectorize=True, dask="parallelized", output_dtypes="complex64",
+                         dask_gufunc_kwargs=dict(output_sizes={"stack":n_out})
+                        )
+    if mask:
+        if isinstance(mask, "str"):
+            mask = da[mask]
+        res = res.where(mask)
+
+    ds = res.isel(stack=slice(0,n_out-2)).rename({"stack":"fcomp"}).to_dataset(name="cha")
+    ds = ds.assign_coords(fcomp=oms)
+    if fname:
+        ds = ds.assign_coords(fcomp_name=xr.DataArray(fname, dims=("fcomp",)))
+    ds["rms_tot"] = res.isel(stack=-2).real
+    ds["rms_res"] = res.isel(stack=-1).real
+
+    return ds
+
+def reco_harmo(amp, t, fcomp=None, dim="fcomp"):
+    """ reconstruct harmonic time series from DataArray 'amp' and time array
+
+    Parameters
+    __________
+        amp: xr.DataArray with dimension "fcomp"
+            harmonic amplitudes + frequency "fcomp" as coordinates
+        t: xr.DataArray
+            time array
+        fcomp: xr.DataArray, optional
+            use amp coordinate if not passed explicitly
+
+    returns
+    _______
+        xr.DataArray with harmo(amp, fcomp, t).sum(dim)
+    """
+    if fcomp is None:
+        fcomp = amp.fcomp
+    return harmo(amp, fcomp, t).sum(dim)
