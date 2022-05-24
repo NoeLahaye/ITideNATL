@@ -443,6 +443,7 @@ def correlation(v1, v2=None, dim="t", mode="same", **kwargs):
         maxlag: float, optional
             if mode=="valid", maximum timelag to compute.
             The first time series v1 will be cropped by the corresponding number of elements
+            if mode!="valid", just crop the result
 
         normalize: boolean, optional (default: False)
             normalize result by variance (otherwise by time series duration)
@@ -477,14 +478,14 @@ def correlation(v1, v2=None, dim="t", mode="same", **kwargs):
         units = dt.attrs.pop("units", None)
 
     maxlag = kwargs.pop("maxlag", None)
-    if maxlag is None:
+    if maxlag is None or mode!="valid":
         nlag = coord.size//2
-    elif isinstance(maxlag, float):
-        nlag = int(maxlag//dt) + 1
-    elif isinstance(maxlag, int):
-        nlag = maxlag + 1
     else:
-        raise ValueError(f"unable to parse maxlag value '{maxlag}'")
+        nlag = int(round(maxlag/dt)) + 1
+    #elif isinstance(maxlag, int):
+        #nlag = maxlag + 1
+    #else:
+        #raise ValueError(f"unable to parse maxlag value '{maxlag}'")
 
     if kwargs.pop("detrend", False):
         v1 = detrend_dim(v1, dim)
@@ -517,6 +518,8 @@ def correlation(v1, v2=None, dim="t", mode="same", **kwargs):
         norm = coord.size
         if mode=="valid": norm -= nlag - 1
         res /= norm
+    if maxlag is not None and mode!="valid":
+        res = res.sel(lag=slice(0,maxlag))
 
     return res
 
