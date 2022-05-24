@@ -572,7 +572,7 @@ def _jac(p, t, y, oms):
 
 def _wrap_fit(yy, tt, oms, ferr, fjac):
     No = len(oms)
-    if not np.isnan(yy).all():
+    if not np.isnan(yy).any():
         if False:
             p0 = np.c_[np.ones(No), np.zeros(No)].ravel()
         else:
@@ -580,7 +580,7 @@ def _wrap_fit(yy, tt, oms, ferr, fjac):
                  ).mean(axis=-1)
             p0 = np.c_[p0.real, p0.imag].ravel()
         try:
-            res = least_squares(ferr, p0, jac=fjac, args=(tt,yy))
+            res = least_squares(ferr, p0, jac=fjac, args=(tt,yy), method="trf")
             pout = np.array([res.x[2*i] + 1.j*res.x[2*i+1]
                              for i in range(No)]
                            ).astype("complex64")
@@ -634,7 +634,7 @@ def harmonic_fit(da, oms=_delom_dict, mask=None):
                          dask_gufunc_kwargs=dict(output_sizes={"stack":n_out})
                         )
     if mask:
-        if isinstance(mask, "str"):
+        if isinstance(mask, str):
             mask = da[mask]
         res = res.where(mask)
 
