@@ -452,3 +452,19 @@ def gauss_filt(ds_or_da, **kwargs):
             res = res.where(mask)
     
     return res
+
+### kind-of-interpolation / cross-grid operations
+def switch_grid(da, dim, ds=None):
+    """ switch from one grid to another (similar to nearest interp) 
+    achieved by renaming and re-assigning dimension coordinates 
+    """
+    pairs = {"x":["x_c", "x_r"], "y":["y_c", "y_r"], "z":["z_c", "z_l"]}
+    d = dim[0]
+    if isinstance(da, str):
+        da = ds[da]
+    din = next(k for k in da.dims if k in pairs[d])
+    dtg = pairs[d][(pairs[d].index(din)+1)%2]
+    res = da.reset_coords(drop=True).rename({din:dtg})
+    if ds is not None:
+        res = res.assign_coords({dtg:ds[dtg]})
+    return res
