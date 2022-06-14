@@ -12,6 +12,7 @@ import scipy.signal as sig
 from scipy.optimize import least_squares
 import xarray as xr
 from .tools import misc as ut
+import warnings
 
 ### local constants, dict, etc.
 
@@ -73,6 +74,9 @@ def datetime_to_dth(ds_or_da, t_name="t", t_ref=None, it_ref=0):
                      "units":"h"
                     }
     else:
+        if not isinstance(t_ref, (int,float)):
+            warnings.warn("t_ref type not understood -- ignoring")
+            t_ref = da[0]
         dth = da - t_ref
         dth.attrs = {"t_ref": t_ref,
                      "long_name": "time ellapsed since t_ref"
