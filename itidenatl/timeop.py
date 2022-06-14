@@ -39,11 +39,12 @@ _dico_demod = dict(coord=None, dim="t", fcut_rel=1./5,
 def datetime_to_dth(ds_or_da, t_name="t", t_ref=None, it_ref=0):
     """ convert datetime series to elapsed time in hour
     reference time is either passed explicitly or taken at given index
+    if not a datetime object, simply return the array (of float) minus t_ref
     
     Parameters
     _________
     ds_or_da: xr.Dataset or xr.DataArray
-        dataset containing time or directly dataarray of type datetime
+        dataset containing time or directly dataarray of dtype datetime64 (or float)
 
     t_name: str, optional (default: "t")
         name of time datarray if ds_or_da is a dataset
@@ -64,12 +65,18 @@ def datetime_to_dth(ds_or_da, t_name="t", t_ref=None, it_ref=0):
         t_ref = da[it_ref]
     elif isinstance(t_ref, str):
         t_ref = np.datetime64(t_ref)
-    dth = (da - t_ref).dt
-    dth = dth.days*24. + dth.seconds/3600. 
-    dth.attrs = {"t_ref": np.datetime_as_string(t_ref, unit="s"), # todo convert to string
-                 "long_name": "time ellapsed since t_ref",
-                 "units":"h"
-                }
+    if da.dtype.type == np.datetime64:
+        dth = (da - t_ref).dt
+        dth = dth.days*24. + dth.seconds/3600. 
+        dth.attrs = {"t_ref": np.datetime_as_string(t_ref, unit="s"), 
+                     "long_name": "time ellapsed since t_ref",
+                     "units":"h"
+                    }
+    else:
+        dth = da - t_ref
+        dth.attrs = {"t_ref": t_ref,
+                     "long_name": "time ellapsed since t_ref"
+                    }
     return dth
 
 #######################  - - -   detrending   - - -  #######################
@@ -292,7 +299,7 @@ def complex_demod(da, fdemod=_freq_cpdmod, **kwargs):
         if isinstance(tref, str):
             tref = np.datetime64(tref)
         dth = datetime_to_dth(da[coord], t_ref=tref)
-        
+
     omt = 2*np.pi * fdemod * dth
     dt = dth[:2].diff(dim).values[0]
     kwgs = dict(fcut=fcut, dt=dt)
