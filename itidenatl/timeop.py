@@ -394,11 +394,11 @@ def wrap_correlate(da1, da2=None, detrend=False, mode="same", maxlag=None):
 
     Parameters
     __________
-        da1: 1D array, size (N,), (M,)
-        da2: 1D array, size N, optional
+        da1: 1D array, size N
+        da2: 1D array, size M, optional
         detrend: bool, optional, default: False
             apply detrending before computing the correlation.
-            WARNING: Won't work from within aply_ufunc
+            WARNING: Won't work from within apply_ufunc
         mode: str {"valid", "same", "full"}
             mode for computing the convolution product. Default is "same"
         maxlag: int (default:None)
@@ -409,19 +409,23 @@ def wrap_correlate(da1, da2=None, detrend=False, mode="same", maxlag=None):
         1D array of size (maxlag + 1 if mode is 'valid', min(N,M) otherwise.
             cross-correlation between da1 and da2, or autocorrelation of da1
     """
-    if detrend:
-        da1 = sig.detrend(da1, axis=-1, type="linear")
-        if da2 is not None:
-            da2 = sig.detrend(da2, axis=-1, type="linear")
-    if da2 is None:
-        da2 = da1
-
-    if mode == "valid" and maxlag is not None:
-        da1 = da1[maxlag:]
-
-    res = sig.correlate(da1, da2, mode=mode, method="auto")
-    if mode != "valid":
-        res = res[res.size//2:]
+    nout = maxlag+1 if mode=="valid" and maxlag is not None else da1.size//2
+    if np.isnan(da1).any() or (da2 is not None and np.isnan(da2).any()):
+        res = np.zeros(nout) + 1.j*np.nan
+    else:
+        if detrend:
+            da1 = sig.detrend(da1, axis=-1, type="linear")
+            if da2 is not None:
+                da2 = sig.detrend(da2, axis=-1, type="linear")
+        if da2 is None:
+            da2 = da1.copy()
+    
+        if mode == "valid" and maxlag is not None:
+            da1 = da1[maxlag:]
+    
+        res = sig.correlate(da1, da2, mode=mode, method="auto")
+        if mode != "valid":
+            res = res[res.size//2:]
     return res
 
 
@@ -458,6 +462,9 @@ def correlation(v1, v2=None, dim="t", mode="same", **kwargs):
 
         normalize: boolean, optional (default: False)
             normalize result by variance (otherwise by time series duration)
+
+        mask: xr.DataArray or str, optional
+            mask or name of mask in v1.coordinates
 
     Returns:
     ________
@@ -504,7 +511,7 @@ def correlation(v1, v2=None, dim="t", mode="same", **kwargs):
             v2 = detrend_dim(v2, dim)
 
     args = (v1, v2) if v2 is not None else (v1, )
-    kwgs = {"mode":mode, "maxlag":maxlag}
+    kwgs = {"mode":mode, "maxlag":nlag-1}
 
     res = xr.apply_ufunc(wrap_correlate, *args,
                         dask="parallelized",  vectorize=True,
@@ -512,6 +519,12 @@ def correlation(v1, v2=None, dim="t", mode="same", **kwargs):
                         output_dtypes=[letype], kwargs=kwgs,
                         dask_gufunc_kwargs={"output_sizes":{"lag": nlag}}
                        )
+    mask = kwargs.pop("mask", None)
+    if mask:
+        if isinstance(mask, str):
+            mask = v1[mask]
+        res = res.where(mask)
+
     try:
         if v2 is None:
             namout = "corr_{0}".format(v1.name)
