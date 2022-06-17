@@ -62,11 +62,11 @@ def datetime_to_dth(ds_or_da, t_name="t", t_ref=None, it_ref=0):
 
     """
     da = ut._ds_to_da(ds_or_da, t_name)
-    if t_ref is None:
-        t_ref = da[it_ref]
-    elif isinstance(t_ref, str):
-        t_ref = np.datetime64(t_ref)
     if da.dtype.type == np.datetime64:
+        if t_ref is None:
+            t_ref = da[it_ref]
+        elif isinstance(t_ref, str):
+            t_ref = np.datetime64(t_ref)
         dth = (da - t_ref).dt
         dth = dth.days*24. + dth.seconds/3600. 
         dth.attrs = {"t_ref": np.datetime_as_string(t_ref, unit="s"), 
@@ -74,10 +74,16 @@ def datetime_to_dth(ds_or_da, t_name="t", t_ref=None, it_ref=0):
                      "units":"h"
                     }
     else:
-        if not isinstance(t_ref, (int,float)):
-            warnings.warn("t_ref type not understood -- ignoring")
-            t_ref = da[0]
-        dth = da - t_ref
+        if t_ref is None and "t_ref" in da.attrs:
+            dth = da
+            t_ref = da.t_ref
+        else:
+            if t_ref is None:
+                t_ref = float(da[0].values)
+            elif not isinstance(t_ref, (int,float)):
+                print("warning: unrecognized type for t_ref -- ignoring")
+                t_ref = float(da[0].values)
+            dth = da - t_ref
         dth.attrs = {"t_ref": t_ref,
                      "long_name": "time ellapsed since t_ref"
                     }
