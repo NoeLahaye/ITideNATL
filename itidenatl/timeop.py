@@ -9,7 +9,7 @@ NJAL May 2022
 """
 import numpy as np
 import scipy.signal as sig
-from scipy.optimize import least_squares
+from scipy.optimize import least_squares, lsq_linear
 import xarray as xr
 from .tools import misc as ut
 import warnings
@@ -536,8 +536,9 @@ def correlation(v1, v2=None, dim="t", mode="same", **kwargs):
 
 #######################  - - -   harmonic fit   - - -  #######################
 # for complex time series -- not tested on a real time series
+# functions for performing the harmonic fit
 
-### functions for performing the harmonic fit
+### routines common to old and new version
 def harmo(amp, dom, t):
     """ harmonic time series with complex amplitude 'amp',
     frequency (rad/units(h)) 'dom' and evaluated at time 't'
@@ -545,6 +546,188 @@ def harmo(amp, dom, t):
     """
     return amp * np.exp(1.j*dom*t)
 
+def reco_harmo(amp, t, fcomp=None, dim="fcomp"):
+    """ reconstruct harmonic time series from DataArray 'amp' and time array
+
+    Parameters
+    __________
+        amp: xr.DataArray with dimension "fcomp"
+            harmonic amplitudes + frequency "fcomp" as coordinates
+        t: xr.DataArray
+            time array
+        fcomp: xr.DataArray, optional
+            use amp coordinate if not passed explicitly
+
+    returns
+    _______
+        xr.DataArray with harmo(amp, fcomp, t).sum(dim)
+    """
+    if "win" in amp.dims:
+        assert dim=="fcomp"
+        amp = reco_env(amp, t)
+        if fcomp is None:
+            fcomp = amp.omega
+    elif fcomp is None:
+        fcomp = amp.fcomp
+    return harmo(amp, fcomp, t).sum(dim)
+
+### new version, allowing to time-variation of the harmonic amplitude expressed on a reduced basis of smooth functions (gaussians)
+def gauss(x, x0=0, L=1):
+    """ single gaussian function with unit amplitude, centered around x0 and with width L
+    returns $\exp( -(x-x0)^2/L^2 )$; standard broadcasting rules apply
+    """
+    return np.exp(-(x-x0)**2/L**2)
+
+def gauss_comp_x0(x, width=1, dw=1):
+    """ location of gaussian basis points given their width and relative spacing
+    i.e. location of center of gaussians with given width, spaced by width/dw
+    this coarse grid will be centered w.r.t x bounds, and one extra point is added on each side
+    """
+    Lx = float(x[-1]-x[0])
+    x0 = np.arange(x[0]-width, x[-1]+(1+.5/dw)*width, width/dw)
+    x0 += float(x[-1]+width-x0[-1])/2. # centering; this should be checked
+    x0 = xr.DataArray(data=x0, dims=("win",))
+    x0.attrs = dict(width=width, dw=dw)
+    return x0
+
+def gauss_comp(x, width=1, x0=None, amps=1., summed=True):
+    """ reconstruct a function expressed on a reduced basis of coumpounds gaussian at points x.
+    The coumpound basis is made of len(x0) gaussian of width 'width', centered at x0 and
+    with amplitude "amps" (scalara or ndarray with same size as x0)
+
+    Parameters
+    __________
+
+    x: xr.DataArray of dtype float, dim "t" with size Nt
+        location where the reconstructed function must be evaluated (e.g. time in hours)
+    width: float (default: 1)
+        width of gaussian functions
+    x0: xr.DataArray, dim "win" with size Nw (optional)
+        location of gaussian centers. Will be computed given width if not provided
+    amps: float or xr.DataArray with dim "win" of size Nw (default: 1.)
+        amplitude of each gaussian component
+
+    Returns
+    _______
+    xr.DataArray
+        """
+    if x0 is None:
+        x0 = gauss_comp_x0(x, width)
+    res = amps * gauss(x, x0, width)
+    if summed:
+        res = res.sum("win")
+    else:
+        res = res.assign_coords(t_win=x0)
+        if isinstance(amps, xr.DataArray):
+            res = res.assign_coords(amps=amps)
+    res = res.assign_coords(t_ell=x)
+    res.attrs = dict(width=width)
+    return res
+
+def _wrap_fit(A, y, **opts):
+    """ work with 1D vectors. Wrapper around opt.lsq_linear, skipping computation when nan is present.
+    Only returns the result.
+
+    see scipy.optimize.lsq_linear for arguments and options
+    """
+    if np.isnan(y[0]):
+        res = np.zeros(A.shape[-1])
+    else:
+        res = lsq_linear(A, y, **opts).x
+    return res
+
+def varharmo_fit(da, oms, width=4*7*24, time=None, mask=True, bounds=None):#, twosteps=True):
+    """ FIXME: does not work if da is 1D (time only): np.isnan(y[0]) says axis 0 has size 0
+        TODO: allow bounds to have distributed / broadcasted dimensions (e.g. space varying)
+    """
+    if np.isinf(width) or width is None or width==0:
+        return harmo_fit(da, oms, time=time, mask=mask)
+
+    if time is None:
+        time = "t"
+    if isinstance(time, str):
+        tt = da[time]
+    else:
+        tt = time
+    tt = datetime_to_dth(tt)
+    Amat = gauss_comp(tt, width, summed=False) * np.exp(1.j*tt*oms)
+    t_ell, t_win = Amat.t_ell, Amat.t_win
+    Amat = Amat.stack(sdim=("fcomp","win"))
+    stack = Amat.sdim
+    if bounds is None:
+        yy = da
+        dtype = "complex64"
+    else:
+        if isinstance(bounds, xr.DataArray): # maybe use an xarray broadcasting routine instead
+            bounds = (bounds + t_win*0).stack(sdim=("fcomp","win"))
+            bounds = xr.concat([bounds, bounds], dim="sdim").values
+        Amat = xr.concat([xr.concat([Amat.real, -Amat.imag], dim="sdim"),
+                          xr.concat([Amat.imag, Amat.real], dim="sdim")
+                         ], dim="t")
+        yy = xr.concat([da.real, da.imag], dim="t").chunk({"t":-1})
+        dtype = "float32"
+    Amat = Amat.values
+    solver = lambda y: _wrap_fit(Amat, y, bounds=(-bounds, bounds)).astype(dtype)
+    res = xr.apply_ufunc(solver, yy, input_core_dims=[["t"]], output_core_dims=[["sdim"]],
+                        vectorize=True, dask="parallelized", output_dtypes=dtype,
+                        dask_gufunc_kwargs=dict(output_sizes={"sdim":Amat.shape[-1]})
+                        )
+    if bounds is not None:
+        res = res.isel(sdim=slice(0,stack.size)) + 1.j*res.isel(sdim=slice(stack.size,None))
+    if mask:
+        if isinstance(mask, str):
+            mask = da[mask]
+        elif isinstance(mask,bool):
+            mask = next(d for d in ["tmask","tmaskutil","umask","umaskutil","vmask","vmaskutil"]
+                       if d in res.coords)
+            mask = da[mask]
+        res = res.where(mask)
+    res = res.assign_coords(sdim=stack).unstack()
+    res = res.assign_coords(t_win=t_win, omega=oms)
+    res.attrs = dict(t_ref = tt.attrs["t_ref"], win_width=width)
+
+    return res
+
+def harmo_fit(da, oms, time=None, mask=True, bounds=None):
+    """
+    t: xr.DataArray or str, optional
+        if not provided, will use "t" in da
+
+    """
+    if time is None:
+        time = "t"
+    if isinstance(time, str):
+        tt = da[time]
+    else:
+        tt = time
+    tt = datetime_to_dth(tt)
+    Amat = np.exp(1.j*tt*oms)
+    Amat = Amat.transpose("t","fcomp").values
+    solver = lambda y: _wrap_fit(Amat, y)
+    res = xr.apply_ufunc(solver, da, input_core_dims=[["t"]], output_core_dims=[["fcomp"]],
+                        vectorize=True, dask="parallelized", output_dtypes="complex64",
+                        dask_gufunc_kwargs=dict(output_sizes={"fcomp":oms.fcomp.size})
+                        )
+    if mask:
+        if isinstance(mask, str):
+            mask = da[mask]
+        elif isinstance(mask,bool):
+            mask = next(d for d in ["tmask","tmaskutil","umask","umaskutil","vmask","vmaskutil"]
+                       if d in res.coords)
+            mask = da[mask]
+        res = res.where(mask)
+    res = res.assign_coords(omega=oms)
+    res.attrs["t_ref"] = tt.attrs["t_ref"]
+
+    return res
+
+def reco_env(amp, t):
+    """ reconstruct time varying complex amplitude (enveloppe) 
+    amp is the solution of varharmo_fit, t is the array of time at which the solution must be evaluated (ellapsed time in hour
+    """
+    return gauss_comp(t, amp.win_width, x0=amp.t_win, amps=amp, summed=True)
+        
+### Old version
 def _fitfunc(p, t, oms):
     res = harmo(p[0], oms[0], t)
     for i in range(1,len(p)):
@@ -584,7 +767,7 @@ def _jac(p, t, y, oms):
         J[:,2*k+1] = np.r_[-res.imag, res.real]
     return J
 
-def _wrap_fit(yy, tt, oms, ferr, fjac):
+def _wrap_fit_lsq(yy, tt, oms, ferr, fjac):
     No = len(oms)
     if not np.isnan(yy).any():
         if False:
@@ -611,6 +794,7 @@ def _wrap_fit(yy, tt, oms, ferr, fjac):
 
 def harmonic_fit(da, oms=_delom_dict, mask=None):
     """ compute harmonic fit at frequencies 'oms' on input DataArray 'da'
+    !!! Deprecated: please use harmo_fit or varharmo_fit instead
 
     wrap scipy.optimze.least_square using xr.apply_ufunc
 
@@ -640,7 +824,7 @@ def harmonic_fit(da, oms=_delom_dict, mask=None):
 
     ferr = lambda p,t,y: _wrap_err(p, t, y, oms)
     fjac = lambda p,t,y: _jac(p, t, y, oms)
-    wrap_fit = lambda y, t: _wrap_fit(y, t, oms, ferr, fjac)
+    wrap_fit = lambda y, t: _wrap_fit_lsq(y, t, oms, ferr, fjac)
 
     res = xr.apply_ufunc(wrap_fit, da, da.t_ellapse,
                         input_core_dims=[["t"], ["t"]], output_core_dims=[["stack"]],
@@ -661,22 +845,3 @@ def harmonic_fit(da, oms=_delom_dict, mask=None):
 
     return ds
 
-def reco_harmo(amp, t, fcomp=None, dim="fcomp"):
-    """ reconstruct harmonic time series from DataArray 'amp' and time array
-
-    Parameters
-    __________
-        amp: xr.DataArray with dimension "fcomp"
-            harmonic amplitudes + frequency "fcomp" as coordinates
-        t: xr.DataArray
-            time array
-        fcomp: xr.DataArray, optional
-            use amp coordinate if not passed explicitly
-
-    returns
-    _______
-        xr.DataArray with harmo(amp, fcomp, t).sum(dim)
-    """
-    if fcomp is None:
-        fcomp = amp.fcomp
-    return harmo(amp, fcomp, t).sum(dim)
