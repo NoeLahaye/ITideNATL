@@ -17,7 +17,8 @@ import warnings
 ### local constants, dict, etc.
 
 _freq_cpdmod = 1. / 12.2 # complex demodulation frequency, cph
-_tide_period_h = {"M2": 12.42, "S2": 12.00, "N2": 12.66, "K2": 11.96}
+_tide_period_h = {"M2": 12.4206012, "S2": 12.00, 
+                    "N2": 12.65834751, "K2": 11.96723606}
 _fcomp = ["M", "S", "N", "K"]
 _t_ref = np.datetime64("2009-06-30T00:30:00")
 
@@ -554,7 +555,7 @@ def correlation(v1, v2=None, dim="t", mode="same", **kwargs):
     if maxlag is not None and mode!="valid":
         res = res.sel(lag=slice(0,maxlag))
 
-    return res.astype(v1.dtype)v1.dtypee
+    return res.astype(v1.dtype)
 
 #######################  - - -   harmonic fit   - - -  #######################
 # for complex time series -- not tested on a real time series
