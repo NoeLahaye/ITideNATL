@@ -541,6 +541,9 @@ def correlation(v1, v2=None, dim="t", mode="same", **kwargs):
 
     res = res.assign_coords(lag = np.arange(nlag) * dt).rename(namout)
     res.lag.attrs["units"] = units
+    if units == "h":
+        res = res.assign_coords(lag_day=res.lag/24.)
+        res.lag_day.attrs["units"] = "day"
 
     if kwargs.pop("normalize", False):
         res /= (v1 * v2.conj()).real.sum()
@@ -551,7 +554,7 @@ def correlation(v1, v2=None, dim="t", mode="same", **kwargs):
     if maxlag is not None and mode!="valid":
         res = res.sel(lag=slice(0,maxlag))
 
-    return res
+    return res.astype(v1.dtype)v1.dtypee
 
 #######################  - - -   harmonic fit   - - -  #######################
 # for complex time series -- not tested on a real time series
@@ -563,7 +566,7 @@ def harmo(amp, dom, t):
     frequency (rad/units(h)) 'dom' and evaluated at time 't'
     returns amp * exp(i*dom*t)
     """
-    return amp * np.exp(1.j*dom*t)
+    return (amp * np.exp(1.j*dom*t)).astype(amp.dtype)
 
 def reco_harmo(amp, t, fcomp=None, dim="fcomp"):
     """ reconstruct harmonic time series from DataArray 'amp' and time array
@@ -587,7 +590,7 @@ def reco_harmo(amp, t, fcomp=None, dim="fcomp"):
         if fcomp is None:
             fcomp = amp.omega
     elif fcomp is None:
-        fcomp = amp.fcomp
+        fcomp = amp.omega if "omega" in amp else amp.fcomp
     return harmo(amp, fcomp, t).sum(dim)
 
 ### new version, allowing to time-variation of the harmonic amplitude expressed on a reduced basis of smooth functions (gaussians)
@@ -652,7 +655,7 @@ def _wrap_fit(A, y, **opts):
     if np.isnan(y[0]):
         res = np.zeros(A.shape[-1])
     else:
-        res = lsq_linear(A, y, **opts).x
+        res = lsq_linear(A, y, **opts).x.astype(y.dtype)
     return res
 
 def varharmo_fit(da, oms, width=4*7*24, time=None, mask=True, bounds=None):#, twosteps=True):
@@ -734,7 +737,7 @@ def harmo_fit(da, oms, time=None, mask=True, bounds=None):
             mask = next(d for d in ["tmask","tmaskutil","umask","umaskutil","vmask","vmaskutil"]
                        if d in res.coords)
             mask = da[mask]
-        res = res.where(mask)
+        res = res.where(mask).astype(da.dtype) # FIXME xr.where returns float64/complex128
     res = res.assign_coords(omega=oms)
     res.attrs["t_ref"] = tt.attrs["t_ref"]
 
