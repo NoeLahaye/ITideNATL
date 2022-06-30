@@ -90,7 +90,7 @@ def datetime_to_dth(ds_or_da, t_name="t", t_ref=None, it_ref=0):
                     }
     return dth
 
-#######################  - - -   detrending   - - -  #######################
+#######################  - - -   detrending and things alike   - - -  ##################
 def detrend_dim(da, dim, deg=1):
     """detrend along a single dimension
     taken from https://gist.github.com/rabernat/1ea82bb067c3273a6166d1b1f77d490f
@@ -105,6 +105,30 @@ def detrend_dim(da, dim, deg=1):
         res -= 1.j * fit_i
     return res
 
+def unwrapped_angle(da, dim="t"):
+    """ unwrapped angled from complex time series -- xarray.apply_ufunc wrapper of numpy.unwrap
+    WARNING: need a single chunk along unwrapping dimension
+    """
+    data = xr.ufuncs.angle(da).chunk({dim:-1})
+    return xr.apply_ufunc(np.unwrap, data, input_core_dims=[[dim]], output_core_dims=[[dim]],
+                         dask="parallelized")
+
+def get_phase_drift(da, coord="t_ellapse"):
+    """ get the phase tendency of a complex time series by fitting a linear function of 'coord'
+    """
+    dim = da[coord].dims[0]
+    phi = unwrapped_angle(da, dim)
+    if dim!=coord:
+        phi = phi.swap_dims({dim:coord})
+    omean = phi.polyfit(dim=coord, deg=1).polyfit_coefficients.isel(degree=0).squeeze()
+    if coord=="t_ellapse":
+        omean *= 24
+        omean.attrs["units"] = "rad/day"
+    elif "units" in da[coord].attrs:
+        omean.attrs["units"] = "rad/"+da[coord].attrs["units"]
+    omean.attrs.update(dict(description=f"mean phase drift of complex time series {da.name}"
+        ))
+    return omean.rename(da.name.split("_")[0]+"_phidrift")
 
 #######################  - - -   time filtering   - - -  #######################
 
