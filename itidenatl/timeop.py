@@ -892,3 +892,66 @@ def harmonic_fit(da, oms=_delom_dict, mask=None):
 
     return ds
 
+######################  - - -  Fitof auto-covariance  - - -  ##########################
+def _wrap_fit(f, y, t, **kwargs):
+    if np.isnan(y).any():
+        res = np.ones(1)*np.nan
+    else:
+        res = opt.least_squares(f, args=(t, y), **kwargs)
+        res = res.x
+    return res
+
+class fitter_correl():
+    def __init__(self, f_kind="decay_exp", **f_kwgs):
+        weight = f_kwgs.get("weight", False)
+        if weight:
+            w_fun = lambda p, x: np.exp(-.5*(x/p[0])**2)
+            g_w_fun = lambda p, x: np.c_[x**2 / p[0]**3 * w_fun(p, x), np.zeros_like(x)]
+        else:
+            w_fun = 1. #lambda p, x: np.ones_like(x)
+        self.weight = w_fun
+        ### function
+        if f_kind == "decay_exp":
+            self.fun = lambda p, t: fun.decay_exp(t, *p)
+            gun = lambda p, t: np.c_[p[1]*t/p[0]**2 * np.exp(-t/p[0]), np.exp(-t/p[0])]
+        ### residual and jacobian
+        if weight:
+            self.res = lambda p, t, y: (self.fun(p, t) - y) * w_fun(p, t)
+            self.jac = lambda p, t, y: gun(p, t) * np.tile(w_fun(p, t), (2,1)).T \
+                            + g_w_fun(p, t) * np.tile(self.res(p, t, y), (2,1)).T
+        else:
+            self.res = lambda p, t, y: self.fun(p, t) - y
+            self.jac = lambda p, t, y: gun(p, t)
+
+    def reco(self, p, t):
+        if isinstance(p, xr.DataArray):
+            p = [p.isel(param=ip) for ip in range(p.param.size)]
+        return self.fun(p, t)
+
+def fit_correl(da, coord="lag_day", mask="auto", weighted=False, return_fitter=False):
+    coord = da[coord] if isinstance(coord, str) else coord
+    dim = coord.dims[0]
+    norm = da.isel({dim:0})
+    data = da / norm
+    x0 = np.array([float(coord[-1])/2., 1.])
+    bounds = (np.array([2., .5]), x0*2)
+    fitter = fun_fit(weight=weighted)
+    solver_kwgs = dict(x0=x0, jac=fitter.jac, bounds=bounds, method="dogbox")
+    solver = lambda y, t: _wrap_fit(fitter.res, y, t, **solver_kwgs)
+    res = xr.apply_ufunc(solver, data, coord, input_core_dims=[[dim], [dim]], output_core_dims=[["param"]]    ,
+                         vectorize=True, dask="parallelized", output_dtypes="float32",
+                         dask_gufunc_kwargs=dict(output_sizes={"param":2})
+                         )
+    if mask:
+        if isinstance(mask, str):
+            if mask=="auto":
+                mask_list = ["tmaskutil", "tmask", "umaskutil", "umask", "vmaskutil", "vmask"]
+                mask = next(v for v in mask_list if v in da.coords)
+            mask = da[mask]
+        res = res.where(mask)
+        
+    res.loc[dict(param=1)] = res.loc[dict(param=1)] * norm.astype(res.dtype)
+    if return_fitter:
+        return (res, fitter)
+    else:
+        return res
