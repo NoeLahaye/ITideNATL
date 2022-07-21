@@ -11,7 +11,7 @@ import numpy as np
 import scipy.signal as sig
 from scipy.optimize import least_squares, lsq_linear
 import xarray as xr
-from .tools import misc as ut
+from .tools import misc as ut, funs as fun
 import warnings
 
 ### local constants, dict, etc.
@@ -671,7 +671,7 @@ def gauss_comp(x, width=1, x0=None, amps=1., summed=True):
     res.attrs = dict(width=width)
     return res
 
-def _wrap_fit(A, y, **opts):
+def _wrap_fit_lsqlin(A, y, **opts):
     """ work with 1D vectors. Wrapper around opt.lsq_linear, skipping computation when nan is present.
     Only returns the result.
 
@@ -714,7 +714,7 @@ def varharmo_fit(da, oms, width=4*7*24, time=None, mask=True, bounds=None):#, tw
         yy = xr.concat([da.real, da.imag], dim="t").chunk({"t":-1})
         dtype = "float32"
     Amat = Amat.values
-    solver = lambda y: _wrap_fit(Amat, y, bounds=(-bounds, bounds)).astype(dtype)
+    solver = lambda y: _wrap_fit_lsqlin(Amat, y, bounds=(-bounds, bounds)).astype(dtype)
     res = xr.apply_ufunc(solver, yy, input_core_dims=[["t"]], output_core_dims=[["sdim"]],
                         vectorize=True, dask="parallelized", output_dtypes=dtype,
                         dask_gufunc_kwargs=dict(output_sizes={"sdim":Amat.shape[-1]})
@@ -750,7 +750,7 @@ def harmo_fit(da, oms, time=None, mask=True, bounds=None):
     tt = datetime_to_dth(tt)
     Amat = np.exp(1.j*tt*oms)
     Amat = Amat.transpose("t","fcomp").values
-    solver = lambda y: _wrap_fit(Amat, y)
+    solver = lambda y: _wrap_fit_lsqlin(Amat, y)
     res = xr.apply_ufunc(solver, da, input_core_dims=[["t"]], output_core_dims=[["fcomp"]],
                         vectorize=True, dask="parallelized", output_dtypes="complex64",
                         dask_gufunc_kwargs=dict(output_sizes={"fcomp":oms.fcomp.size})
@@ -892,28 +892,36 @@ def harmonic_fit(da, oms=_delom_dict, mask=None):
 
     return ds
 
-######################  - - -  Fitof auto-covariance  - - -  ##########################
+######################  - - -  Fit of auto-covariance  - - -  ##########################
 def _wrap_fit(f, y, t, **kwargs):
     if np.isnan(y).any():
-        res = np.ones(1)*np.nan
+        res = np.ones(kwargs["x0"].size)*np.nan
     else:
-        res = opt.least_squares(f, args=(t, y), **kwargs)
+        res = least_squares(f, args=(t, y), **kwargs)
         res = res.x
     return res
 
 class fitter_correl():
-    def __init__(self, f_kind="decay_exp", **f_kwgs):
+    def __init__(self, model="decay_exp", **f_kwgs):
+        self.model = model
         weight = f_kwgs.get("weight", False)
         if weight:
             w_fun = lambda p, x: np.exp(-.5*(x/p[0])**2)
-            g_w_fun = lambda p, x: np.c_[x**2 / p[0]**3 * w_fun(p, x), np.zeros_like(x)]
+            g_w_fun = lambda p, x: np.c_[ x**2 / p[0]**3 * w_fun(p, x), \
+                                          np.zeros(x.size*(p.size-1))
+                                        ]
         else:
             w_fun = 1. #lambda p, x: np.ones_like(x)
         self.weight = w_fun
         ### function
-        if f_kind == "decay_exp":
+        if model == "decay_exp":
             self.fun = lambda p, t: fun.decay_exp(t, *p)
             gun = lambda p, t: np.c_[p[1]*t/p[0]**2 * np.exp(-t/p[0]), np.exp(-t/p[0])]
+        elif model == "decay_exp_cst":
+            self.fun = lambda p, t: fun.decay_exp(t, *p[:2]) + p[2]
+            gun = lambda p, t: np.c_[ p[1]*t/p[0]**2 * np.exp(-t/p[0]), \
+                                      np.exp(-t/p[0]), np.ones_like(t) \
+                                      ]
         ### residual and jacobian
         if weight:
             self.res = lambda p, t, y: (self.fun(p, t) - y) * w_fun(p, t)
@@ -928,19 +936,24 @@ class fitter_correl():
             p = [p.isel(param=ip) for ip in range(p.param.size)]
         return self.fun(p, t)
 
-def fit_correl(da, coord="lag_day", mask="auto", weighted=False, return_fitter=False):
+def fit_correl(da, coord="lag_day", model="decay_exp", mask="auto", weighted=False, return_fitter=False):
     coord = da[coord] if isinstance(coord, str) else coord
     dim = coord.dims[0]
     norm = da.isel({dim:0})
     data = da / norm
-    x0 = np.array([float(coord[-1])/2., 1.])
-    bounds = (np.array([2., .5]), x0*2)
-    fitter = fun_fit(weight=weighted)
+    if model == "decay_exp":
+        x0 = np.array([float(coord[-1])/2., 1.])
+        bounds = (np.array([2., .5]), x0*2)
+    elif model == "decay_exp_cst":
+        x0 = np.array([float(coord[-1])/2., 1., .5])
+        bounds = (np.array([2., .5, 0.]), x0*2)
+
+    fitter = fitter_correl(model=model, weight=weighted)
     solver_kwgs = dict(x0=x0, jac=fitter.jac, bounds=bounds, method="dogbox")
     solver = lambda y, t: _wrap_fit(fitter.res, y, t, **solver_kwgs)
     res = xr.apply_ufunc(solver, data, coord, input_core_dims=[[dim], [dim]], output_core_dims=[["param"]]    ,
                          vectorize=True, dask="parallelized", output_dtypes="float32",
-                         dask_gufunc_kwargs=dict(output_sizes={"param":2})
+                         dask_gufunc_kwargs=dict(output_sizes={"param":x0.size})
                          )
     if mask:
         if isinstance(mask, str):
@@ -949,9 +962,16 @@ def fit_correl(da, coord="lag_day", mask="auto", weighted=False, return_fitter=F
                 mask = next(v for v in mask_list if v in da.coords)
             mask = da[mask]
         res = res.where(mask)
+    res.attrs = dict(model=model, weighted=weighted)
         
-    res.loc[dict(param=1)] = res.loc[dict(param=1)] * norm.astype(res.dtype)
+    #res.loc[dict(param=1)] = res.loc[dict(param=1)] * norm.astype(res.dtype)
+    if model == "decay_exp":
+        loc = dict(param=1)
+    elif model == "decay_exp_cst":
+        loc = dict(param=[1, 2])
+    res.loc[loc] = res.loc[loc] * norm.astype(res.dtype)
+
     if return_fitter:
-        return (res, fitter)
+        return res, fitter
     else:
         return res
