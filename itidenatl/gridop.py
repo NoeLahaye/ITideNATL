@@ -390,7 +390,8 @@ def diff_on_grid_diffbeforeinterp(da, dim, grid, upmask=False):
 ### Other spatial operations: filtering
 from scipy.ndimage import gaussian_filter
 
-def fill_masked(da, limit, mask=None, dims=None):
+# TODO fix fill_masked: sometimes it does not work.
+def fill_masked(da, mask=None, dims=None):
     """ rudimentary version: replace with zeros, i.e. wrapper of xr.fillna) """
     if mask is not None:
         res = da.where(mask, 0.)
@@ -436,7 +437,7 @@ def gauss_filt(ds_or_da, **kwargs):
                 mask = ds_or_da["tmaskutil"]
             else:
                 mask = np.isfinite(ds_or_da)
-            da = fill_masked(ds_or_da, limit=sigma*truncate, mask=mask)
+            da = fill_masked(ds_or_da, mask=mask)
         else:
             da = ds_or_da
         gf_kwgs = dict(sigma=sigma, truncate=truncate)
