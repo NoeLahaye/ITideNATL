@@ -230,6 +230,40 @@ class Vmodes(object):
         """ project on w-modes, from data at T or w levels 
         use (projection * self.ds.phiw).sum("mode") to reconstruct
         See also: project, reconstruct_w
+        this version satisfies discrete orthonormality. Never tested.
+        see _project_w_wrong for an older version that was not satisfying discrete orthonormality.
+        """
+        if sel is None:
+            dm = self.ds
+        else:
+            dm = self.ds.sel(sel)
+        zc, zl = self._z_dims["zc"], self._z_dims["zl"]
+
+        if align:
+            data, dm = xr.align(data, dm, join="inner")
+            
+        #_check_hdim_mismatch(data, dm)
+        if zc in data.dims:
+            data = self.xgrid.interp(data, "Z", boundary="extrapolate")
+        val_surf = data.isel({zl:0}).drop(zl)
+
+        if "zl" in self._z_mask:
+            wmask = dm[self._z_mask["zl"]]
+        else:
+            wmask = self.xgrid.interp(dm[self._z_mask["zc"]], "Z", boundary="extend")==1 # keep surface, skip bottom
+
+        prov = (data * dm.phiw * dm[self._N2name] * dm[self._z_del["zl"]]
+                ).where(wmask).isel({zl:slice(1,None)}).sum(zl) / dm.c**2
+        
+        if self.free_surf:
+            prov += dm.phi.isel({zc:0}) * val_surf
+       
+        return prov / dm.norm
+
+    def _project_w_wrong(self, data, sel=None, align=True): 
+        """ project on w-modes, from data at T or w levels 
+        use (projection * self.ds.phiw).sum("mode") to reconstruct
+        See also: project, reconstruct_w
         this needs some more tests """
         if sel is None:
             dm = self.ds
@@ -278,6 +312,7 @@ class Vmodes(object):
             data = self.xgrid.interp(data, "Z", boundary="extrapolate")
         else:
             val_surf = data.isel({zc:0}).drop(zc) ### warning: nearest interpolation at surface
+
         prov = (data * self.xgrid.interp(dm.phiw, "Z", boundary="fill", fill_value=0) 
                 * dm[self._z_del["zc"]]
                ).where(dm[self._z_mask["zc"]]).sum(zc)

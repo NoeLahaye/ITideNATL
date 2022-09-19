@@ -209,7 +209,7 @@ def ts_expan_ratio(ds_or_da, salt=None, pdep=None, inv_p=True, **kwargs):
     bas = ( zn / zs * r1_rau0 ).rename("beta")
 
     ### Finalize and return result
-    if "tmask" in ds_or_da:
+    if "tmask" in ds_or_da.coords:
         alt, bas = alt.where(ds_or_da.tmask), bas.where(ds_or_da.tmask)
     return alt, bas
 
