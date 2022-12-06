@@ -348,7 +348,7 @@ def complex_demod(da, fdemod=_freq_cpdmod, **kwargs):
     
     prov = (2 * da * np.exp(-1.j*omt)).assign_coords(t_ellapse=dth.reset_coords(drop=True))
     res = iir_filter(prov, btype="low", **kwgs).astype(out_dtype)
-    res.attrs.update({"demod_freq":fdemod, "t_ref":dth.t_ref})
+    res.attrs.update({"demod_freq":fdemod, "t_ref":dth.t_ref, "t_units":"h"})
     return res.rename(da.name+"_cpdm")
 
 ### reconstruct time series (equivalent to bandpass filtering)

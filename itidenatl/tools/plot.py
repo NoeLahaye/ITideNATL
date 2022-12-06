@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 plt.rcParams.update({"font.size":14, "font.family":"serif"})
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import copy
 
 import numpy as np
 
@@ -58,6 +59,13 @@ def prep_subplots(nrow=1, ncol=1, **kwargs):
 
     return fig, axs
 
+def get_cmap_setbad(cmap, color="LightGrey"):
+    """ returns cmap with bad values (nan) set to color (default: "LightGrey")
+    """
+    cmap = copy.copy(plt.get_cmap(cmap))
+    cmap.set_bad(color)
+    return cmap
+
 def get_discrete_cmap_norm(vmin=0, vmax=1, nlevs=10, cmap="Spectral", extend="neither"):
     """ discrete colormap and linear norm
 
@@ -72,7 +80,7 @@ def get_discrete_cmap_norm(vmin=0, vmax=1, nlevs=10, cmap="Spectral", extend="ne
     cmap, norm
 
     """
-    cmap = plt.get_cmap(cmap)
+    cmap = copy.copy(plt.get_cmap(cmap))
 
     if extend=="both":
         idp = 1
@@ -86,3 +94,30 @@ def get_discrete_cmap_norm(vmin=0, vmax=1, nlevs=10, cmap="Spectral", extend="ne
 
     cmap, norm = mpl.colors.from_levels_and_colors(levels, colors, extend=extend)
     return cmap, norm
+
+def plot_mode_matrix(data, ax=None, x="mode", y=None, invert_y=True, **kwargs):
+    """ plot a representation of a matrix
+    data is a 2D xr.DataArray. 
+    This routine wraps pcolormesh (through xarray plotting routines) and manually add lines.
+    kwargs will be directly passed to pcolormesh and should contains items accordingly
+    """
+    dico = {k:v for k,v in kwargs.items()}
+    if ax is not None:
+        dico["ax"] = ax
+    if y is not None:
+        dico["y"] = y
+        Ny = data[y].size
+    else:
+        Ny = data[x].size
+    hpc = data.plot(**dico)
+    if ax is None:
+        ax = hpc.axes
+    if invert_y:
+        ax.invert_yaxis()
+    # manually add lines
+    ax.set_xticks(np.arange(data[x].size))
+    ax.set_xticks(np.arange(data[x].size)-.5, minor=True)
+    ax.set_yticks(np.arange(Ny))
+    ax.set_yticks(np.arange(Ny)-.5, minor=True)
+    ax.grid(which="minor")
+    return hpc
