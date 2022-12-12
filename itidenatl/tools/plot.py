@@ -163,14 +163,12 @@ def make_figax(domain=None, **kwargs):
     # tweak labels & stuff # TODO FIX THIS for non-regional plots
     itax = axs.ravel() if nrow * ncol > 1 else [axs]
     for ax in itax:
+        if extent is not None:
+            ax.set_extent(extent)
         gl = ax.gridlines(draw_labels=True)
         gl.top_labels = False
         gl.right_labels = False
         ax.add_feature(cfeature.LAND, facecolor="lightgray")
-
-    if extent is not None:
-        for ax in itax:
-            ax.set_extent(extent)
 
     return fig, axs
 
