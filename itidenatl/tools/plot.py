@@ -93,10 +93,12 @@ def plot(data, ax=None, domain=None, **kwargs):
                             projection=projection, extent=extent, **fig_kwgs)
         #raise NotImplementedError("auto generation of ax not yet implemented"\
         #                          +"please generate one with make_figax")
-    plt_kwgs = ["vmin", "vmax", "norm", "cmap"]
+    plt_kwgs = ["vmin", "vmax", "norm", "cmap", "add_colorbar"]
     plt_kwgs = {k:kwgs[k] for k in plt_kwgs if k in kwgs}
+    if plt_kwgs.get("add_colorbar", True):
+        plt_kwgs["cbar_kwargs"] = kwgs["cbar_kwargs"]
     hpc = data.plot(ax=ax, x="llon_"+hgrid, y="llat_"+hgrid, transform=ccrs.PlateCarree(),
-              cbar_kwargs=kwgs["cbar_kwargs"], **plt_kwgs
+              **plt_kwgs
              )
     return hpc
 
