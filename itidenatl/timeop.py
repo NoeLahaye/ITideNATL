@@ -17,7 +17,7 @@ import warnings
 ### local constants, dict, etc.
 
 _freq_cpdmod = 1. / 12.2 # complex demodulation frequency, cph
-_tide_period_h = {"M2": 12.4206012, "S2": 12.00, "N2": 12.65834751,
+_tide_period_h = {"M2": 12.4206012, "S2": 12.00, "N2": 12.65834751, "K2": 11.96723606,
                     "K1": 23.93447213, "O1": 25.81933871
                  }
 _fcomp = ["M", "S", "N", "K"]
