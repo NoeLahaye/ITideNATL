@@ -44,7 +44,9 @@ def _print_dic(dico, doprint=True):
     else:
         return str_prt
 
-def get_chunks(ds_or_da, dim, firstonly=True):
+def get_chunks(ds_or_da, dim=None, firstonly=True):
+    if dim is None:
+        dim = tuple(ds_or_da.dims)
     if isinstance(dim, (list, tuple)):
         res = {d: get_chunks(ds_or_da, d, firstonly) for d in dim}
     elif isinstance(dim, str):

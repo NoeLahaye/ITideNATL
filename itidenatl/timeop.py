@@ -17,8 +17,9 @@ import warnings
 ### local constants, dict, etc.
 
 _freq_cpdmod = 1. / 12.2 # complex demodulation frequency, cph
-_tide_period_h = {"M2": 12.4206012, "S2": 12.00, 
-                    "N2": 12.65834751, "K2": 11.96723606}
+_tide_period_h = {"M2": 12.4206012, "S2": 12.00, "N2": 12.65834751,
+                    "K1": 23.93447213, "O1": 25.81933871
+                 }
 _fcomp = ["M", "S", "N", "K"]
 _t_ref = np.datetime64("2009-06-30T00:30:00")
 
@@ -95,7 +96,9 @@ def detrend_dim(da, dim, deg=1):
     """detrend along a single dimension
     taken from https://gist.github.com/rabernat/1ea82bb067c3273a6166d1b1f77d490f
     modify to take into account complex values -- fitting real and imag separately
-    but why da.polyfit does not work with complex values, while np.polyfit does? """
+    but why da.polyfit does not work with complex values, while np.polyfit does? 
+    TODO: probably this should be updated to use liner_trend (chunks)
+    """
     p = da.polyfit(dim=dim, deg=deg)
     fit = xr.polyval(da[dim], p.polyfit_coefficients)
     res = da - fit
@@ -105,30 +108,46 @@ def detrend_dim(da, dim, deg=1):
         res -= 1.j * fit_i
     return res
 
+def linear_trend(x, y):
+    nds = y.shape
+    flatening = len(nds)>2
+    if flatening:
+        y = y.reshape((-1,nds[-1]), order="F")
+    pf = np.polyfit(x, y.T, 1)[0,:]
+    if flatening:
+        pf = pf.reshape(nds[:-1], order="F")
+    return pf
+
 def unwrapped_angle(da, dim="t"):
     """ unwrapped angled from complex time series -- xarray.apply_ufunc wrapper of numpy.unwrap
     WARNING: need a single chunk along unwrapping dimension
     """
-    data = xr.ufuncs.angle(da).chunk({dim:-1})
-    return xr.apply_ufunc(np.unwrap, data, input_core_dims=[[dim]], output_core_dims=[[dim]],
+    unwrap_angle = lambda x: np.unwrap(np.angle(x))
+    return  xr.apply_ufunc(unwrap_angle, da.chunk({dim:-1}), 
+                         input_core_dims=[[dim]], output_core_dims=[[dim]], 
                          dask="parallelized")
 
+
 def get_phase_drift(da, coord="t_ellapse"):
-    """ get the phase tendency of a complex time series by fitting a linear function of 'coord'
+    """ using custom routine to get linear trend instead of xr.polyfit, 
+    which messes around with the chunks 
     """
     dim = da[coord].dims[0]
     phi = unwrapped_angle(da, dim)
     if dim!=coord:
         phi = phi.swap_dims({dim:coord})
-    omean = phi.polyfit(dim=coord, deg=1).polyfit_coefficients.isel(degree=0).squeeze()
-    if coord=="t_ellapse":
+    omean = xr.apply_ufunc(linear_trend, phi[coord], phi, 
+                           input_core_dims=[[coord,], [coord,]],
+                           dask="parallelized", output_dtypes="float32")
+    if coord == "t_ellapse":
         omean *= 24
         omean.attrs["units"] = "rad/day"
     elif "units" in da[coord].attrs:
         omean.attrs["units"] = "rad/"+da[coord].attrs["units"]
-    omean.attrs.update(dict(description=f"mean phase drift of complex time series {da.name}"
-        ))
+    omean.attrs.update(dict(description=f"mean phase drift of complex time series {da.name    }"
+                        ))
     return omean.rename(da.name.split("_")[0]+"_phidrift")
+
 
 #######################  - - -   time filtering   - - -  #######################
 
@@ -615,7 +634,7 @@ def reco_harmo(amp, t, fcomp=None, dim="fcomp"):
         if fcomp is None:
             fcomp = amp.omega
     elif fcomp is None:
-        fcomp = amp.omega if "omega" in amp else amp.fcomp
+        fcomp = amp.omega if "omega" in amp.coord else amp.fcomp
     return harmo(amp, fcomp, t).sum(dim)
 
 ### new version, allowing to time-variation of the harmonic amplitude expressed on a reduced basis of smooth functions (gaussians)
