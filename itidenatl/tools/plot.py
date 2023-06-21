@@ -67,6 +67,8 @@ def plot(data, ax=None, domain=None, **kwargs):
     Returns
     _______
     matplotlib collection quadmesh or equivalent
+    
+    TODO: fix kwargs, "add_colorbar" seems to be ignored
     """
     kwgs = _plt_kwgs.copy()
     kwgs.update(kwargs)
