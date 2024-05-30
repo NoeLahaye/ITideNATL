@@ -18,7 +18,8 @@ import warnings
 
 _freq_cpdmod = 1. / 12.2 # complex demodulation frequency, cph
 _tide_period_h = {"M2": 12.4206012, "S2": 12.00, "N2": 12.65834751, "K2": 11.96723606,
-                    "K1": 23.93447213, "O1": 25.81933871
+                    "K1": 23.93447213, "O1": 25.81933871, "P1": 24.06588766, "Q1": 26.868350,
+                    "Mf": 327.8592, "Mm": 661.3104
                  }
 _fcomp = ["M", "S", "N", "K"]
 _t_ref = np.datetime64("2009-06-30T00:30:00")
@@ -356,7 +357,7 @@ def complex_demod(da, fdemod=_freq_cpdmod, **kwargs):
 
     omt = 2*np.pi * fdemod * dth
     dt = dth[:2].diff(dim).values[0]
-    kwgs = dict(fcut=fcut, dt=dt)
+    kwgs = dict(fcut=fcut, dt=dt, dim=dim)
 
     subsample = dico["subsample"]
     if subsample:
