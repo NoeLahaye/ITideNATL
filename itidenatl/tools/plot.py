@@ -12,7 +12,9 @@ from .. import gridop as gop
 
 _domain_extent = dict(AZ = [-37.5, -23.5, 28.3, 40.8],
                       GF = [-76, -52, 34, 44.5],
+                      GS = [-73, -55, 34, 45],
                       NAtl =[-95, 0, 6.5, 55],
+                      NE =[-95, 0, 6.5, 55],
                      )
 
 _plt_kwgs = dict(nrow=1, ncol=1, projection="auto",
@@ -169,11 +171,16 @@ def make_figax(domain=None, **kwargs):
     for ax in itax:
         if extent is not None:
             ax.set_extent(extent)
-        gl = ax.gridlines(draw_labels=True)
-        gl.top_labels = False
-        gl.right_labels = False
         ax.add_feature(cfeature.LAND, facecolor="lightgray")
-
+    if nrow * ncol > 1:
+        for ax in axs[:,0]:
+            ax.gridlines(draw_labels=["bottom","left"])
+        for ax in axs[:,1:].flat:
+            ax.gridlines(draw_labels=["bottom"])
+    else:
+        for ax in itax:
+            ax.gridlines(draw_labels=["bottom","left"])
+            
     return fig, axs
 
 ### kept for backward compatibility
